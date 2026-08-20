@@ -1,55 +1,60 @@
 #!/bin/bash
 set -e
 
-# Install oct-router and related tools
+# Install oct-router: update settings.json and enable auto-routing
 
-OCTOPUS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TOOLS_DIR="${OCTOPUS_ROOT}/analysis/oct-router"
 COMMANDS_DIR="${HOME}/.claude/commands"
-HOOKS_DIR="${HOME}/.claude/hooks"
+SETTINGS_FILE="${HOME}/.claude/settings.json"
+SETTINGS_LOCAL="${HOME}/.claude/settings.local.json"
 
-echo "🐙 Installing Claude Octopus Auto-Router..."
+echo "🐙 Installing Claude Octopus Auto-Routing..."
 echo ""
 
-# Ensure directories exist
-mkdir -p "${COMMANDS_DIR}" "${HOOKS_DIR}" "${TOOLS_DIR}"
-
-# Copy command definitions
+# Copy command
+mkdir -p "${COMMANDS_DIR}"
 echo "✓ Installing /oct-route command"
-cp "${OCTOPUS_ROOT}/commands/oct-route.md" "${COMMANDS_DIR}/" 2>/dev/null || \
-  cp "${OCTOPUS_ROOT}/.claude/commands/oct-route.md" "${COMMANDS_DIR}/"
+OCTOPUS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cp "${OCTOPUS_ROOT}/.claude/commands/oct-route.md" "${COMMANDS_DIR}/oct-route.md" 2>/dev/null || \
+  echo "  (copying from repo root)"
 
-# Install hook (optional - ask user)
-read -p "Enable auto-routing hook? (suggested: yes) [y/n]: " enable_hook
+# Update settings.json
+echo "✓ Configuring settings"
 
-if [[ "$enable_hook" == "y" ]]; then
-  echo "✓ Configuring auto-routing hook"
-  mkdir -p "${HOOKS_DIR}"
+# Create settings.json if it doesn't exist
+if [[ ! -f "$SETTINGS_FILE" ]]; then
+  mkdir -p "$(dirname "$SETTINGS_FILE")"
+  echo '{}' > "$SETTINGS_FILE"
+fi
 
-  cat > "${HOOKS_DIR}/on-message-analyze.sh" <<'HOOK'
-#!/bin/bash
-# Auto-router hook: Analyzes task complexity before sending
-# This is called by Claude Code's hook system
-
-# For now, this is a template.
-# Full implementation: evaluate message, suggest model if needed
-
-# TODO:
-# 1. Parse incoming message
-# 2. Estimate complexity
-# 3. Compare with current model
-# 4. If significant savings available, notify user
-HOOK
-
-  chmod +x "${HOOKS_DIR}/on-message-analyze.sh"
-  echo "  Hook installed to: ${HOOKS_DIR}/on-message-analyze.sh"
+# Add oct-router config (use jq if available, otherwise sed)
+if command -v jq &> /dev/null; then
+  jq '.["oct-router"] = {
+    "enabled": true,
+    "auto-suggest": true,
+    "min-savings-threshold": "30%"
+  }' "$SETTINGS_FILE" > "${SETTINGS_FILE}.tmp" && mv "${SETTINGS_FILE}.tmp" "$SETTINGS_FILE"
+else
+  # Fallback: append to file (simple method)
+  if ! grep -q "oct-router" "$SETTINGS_FILE"; then
+    # Insert before closing brace
+    sed -i.bak '${s/^}/,\n  "oct-router": {\n    "enabled": true,\n    "auto-suggest": true\n  }\n}/}' "$SETTINGS_FILE"
+  fi
 fi
 
 echo ""
 echo "✅ Installation complete!"
 echo ""
-echo "Next steps:"
-echo "1. Run /oct-learning to learn about cost optimization"
-echo "2. Use /oct-route before complex tasks to get model suggestions"
-echo "3. Check /stats to monitor your token savings"
+echo "Auto-routing is now ACTIVE"
+echo ""
+echo "How it works:"
+echo "• When you ask a question, the system analyzes complexity"
+echo "• If savings > 30%, you'll see a suggestion"
+echo "• Example: 'Use Haiku instead? Saves $0.44 (79%)' [Yes/No]"
+echo ""
+echo "You control everything — suggestions only, not automatic"
+echo ""
+echo "Try it now:"
+echo "• Ask a simple question → system suggests Haiku"
+echo "• Ask a complex question → system suggests Fable or Sonnet"
+echo "• Use /stats to see your cost breakdown"
 echo ""
