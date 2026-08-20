@@ -22,6 +22,8 @@ Or use individual command help:
 /oct-rest --help
 /oct-recall --help
 /oct-forget --help
+/oct-monitor --help
+/oct-size --help
 ```
 
 ## All Commands
@@ -55,6 +57,16 @@ Or use individual command help:
   - Remove selected commands
   - Clear configuration
   - Can reinstall anytime
+
+**📊 /oct-monitor** — Smart background monitoring
+  - Detect context bloat automatically
+  - Alert when approaching limit (one-time)
+  - Cost: ~NT$5-15/month
+
+**📈 /oct-size** — Quick context checker (NEW)
+  - Show current session size
+  - Estimate token usage
+  - Display health status
 
 **❓ /oct-help** — This help (you are here)
   - View all commands
