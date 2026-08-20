@@ -1,86 +1,67 @@
 # oct-reflect
 
-Review token usage and cost analysis across sessions.
+Automatically diagnose token waste and suggest optimizations.
 
-Reflects on spending to learn patterns and optimize.
+Like reflecting after a day's work — find what's wasteful, fix it.
 
 ## Usage
 
 ```bash
-/oct-reflect              # Show all-time token summary
+/oct-reflect              # Run full diagnosis
 /oct-reflect --help       # Show help
-/oct-reflect week         # This week's summary
-/oct-reflect month        # This month's summary
-/oct-reflect task SYS-1859 # Specific task breakdown
+/oct-reflect help         # Show help
 ```
 
-## What It Shows
+## What It Does
+
+Automatically scans and diagnoses token waste:
 
 ```
-🔍 Token Reflection Report
+🔍 Oct-Reflect: Token Waste Diagnosis
 
-Period: 2026-08-18 to 2026-08-20 (3 days)
+1️⃣ MCP Servers (loaded every session)
+   deferred_tools_delta: ~1,912 tokens
+   💡 Disable unused: /mcp → disable
 
-📊 Total Usage:
-  Input tokens: 45.2k
-  Output tokens: 23.5k
-  Cache read: 892.3k
-  Total cost: $28.43
+2️⃣ Skills (loaded every session)
+   12 skills installed: ~4,823 tokens/session
+   Largest: oct-dream (684), oct-help (679)
+   💡 Remove unused: /oct-forget
 
-By Model:
-  Fable 5: 300k tokens (60%) — $18
-  Sonnet 4.6: 150k tokens (30%) — $6
-  Haiku 4.5: 50k tokens (10%) — $0.75
+3️⃣ Memory Files (loaded on demand)
+   ⚠️ sys1859-complete.md: 5,190 words (too large)
+   ⚠️ sys1821-complete.md: 2,880 words
+   ⚠️ completed bugs still active
+   💡 Archive: /oct-dream
 
-By Task:
-  SYS-1859: 250k tokens (50%)
-  SYS-1844: 200k tokens (40%)
-  Other: 50k tokens (10%)
+4️⃣ Usage Patterns
+   56% from subagent-heavy sessions
+   42% at >150k context
+   15% from Gmail MCP
+   💡 Avoid agents for simple tasks
 
-Efficiency Metrics:
-  Avg cost per session: $6.85
-  Most expensive model: Fable ($9/session)
-  Most efficient: Haiku ($0.75/session)
-
-Recommendations:
-  → 40% of work could use Haiku instead (save $7.20)
-  → Consider Sonnet for medium tasks
-  → Fable usage seems appropriate for RCA
+📊 Summary:
+   Quick wins: disable MCP, archive bugs, reduce agents
+   Estimated savings: ~8,411 tokens/session
 ```
 
-## How It Works
+## How to Run
 
-Reads `~/.claude/token-log.md` which is populated by:
-- `/oct-rest` — records checkpoint token usage
-- `/oct-sleep` — records session-end token usage
-
-Each entry captures:
+```bash
+~/.claude/scripts/reflect-analyze.sh
 ```
-- Date/Time
-- Task
-- Model used
-- Input/Output/Cache tokens
-- Cost
-```
-
-Then `/oct-reflect` aggregates across any time period.
 
 ## Integration
 
-Typical workflow:
-```
-Work session
-  ↓
-[30-60 min] /oct-rest → record tokens
-  ↓
-[work done] /oct-sleep → final token count
-  ↓
-[end of week] /oct-reflect → analyze spending
-```
+Run after `/oct-sleep` for weekly reflection:
 
-## Tips
-
-- Run weekly to spot patterns
-- Compare Fable vs Haiku efficiency
-- See which tasks are most expensive
-- Optimize model selection based on data
+```
+Work week
+  ↓
+/oct-sleep (each day)
+  ↓
+/oct-reflect (weekly)
+  → Find waste
+  → Apply fixes
+  → Next week costs less
+```
