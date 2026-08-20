@@ -71,23 +71,59 @@ Everything is plain markdown. You can read, edit, or delete any file directly.
 
 ## Commands
 
-### `/oct-learning` (NEW)
-Interactive guide to cost optimization and auto-routing.
+### `/oct-wake` — Bootstrap
+First-time setup: install cost optimization tools.
 ```bash
-/oct-learning
-→ Learn about token costs
-→ Understand model selection
-→ Install auto-routing tools
+/oct-wake
+→ Detect expensive model usage
+→ Offer to install auto-routing
+→ Ready immediately after setup
 ```
 
-### `/oct-route` (NEW)
-Analyze your current task and get model suggestions.
+### `/oct-focus` — Analyze
+Think clearly: analyze task and suggest optimal model.
 ```bash
-/oct-route
-→ Evaluates complexity: Low/Medium/High
-→ Shows current model vs recommended
-→ Estimates cost savings
-→ Asks: [Switch] [Keep] [Explain]
+/oct-focus
+→ Evaluate complexity: Low/Medium/High
+→ Show current vs recommended model
+→ Display cost savings
+→ Ask: switch or keep?
+```
+
+### `/oct-dream` — Consolidate
+Process your memories like sleep: organize and optimize.
+```bash
+/oct-dream
+→ Scan memory files
+→ Detect duplicates and patterns
+→ Suggest merges and archiving
+→ Keep system clean
+```
+
+### `/oct-rest` — Checkpoint
+Save current session for later restoration.
+```bash
+/oct-rest
+→ Create handoff summary (~1-2k tokens)
+→ Capture task, findings, next steps
+→ Save to ~/.claude/summaries/
+```
+
+### `/oct-recall` — Restore
+Browse history and restore previous sessions.
+```bash
+/oct-recall [filter]
+→ View session history
+→ Pick one to restore
+→ Continue from where you left off
+```
+
+### `/oct-forget` — Uninstall
+Remove Claude Octopus tools anytime.
+```bash
+/oct-forget
+→ Select what to remove
+→ Can be re-installed later
 ```
 
 ## Roadmap
