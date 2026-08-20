@@ -78,24 +78,31 @@ Or use individual command help:
   - View all commands
   - Get help for specific command
 
-### Organization Methods in `/oct-dream`
+### Complete Daily Workflow
 
-**1. Auto Recommend**
-- Let system analyze and suggest
-- Fastest but less personal
+```
+🌅 /oct-wake        Morning: Bootstrap
+   ↓
+🧠 /oct-focus       Analyze task & suggest model
+💾 /oct-rest        [30-60 min] Checkpoint
+  └─ 📊 Record tokens
+   ↓
+🌙 /oct-dream       Evening: Organize memory
+😴 /oct-sleep       Night: Finalize & summarize
+  └─ 📊 Record final tokens
+   ↓
+🔍 /oct-reflect     Weekly: Analyze spending (NEW)
+   ↓
+🔙 /oct-recall      Next day: Resume from checkpoint
+```
 
-**2. Manual Select**  
-- Review each item individually
-- Slowest but complete control
+### Token Tracking
 
-**3. By Task**
-- Group by project/issue (SYS-1859, etc)
-- Best for task-oriented developers
+**Automatic recording at:**
+- `/oct-rest` — Checkpoint tokens (mid-work)
+- `/oct-sleep` — Session-end tokens (work complete)
 
-**4. By Timeline**
-- Organize by weeks/phases
-- Best for progress review
-
-**5. Extract Patterns**
-- Identify recurring patterns
-- Best for knowledge accumulation
+**Analysis:**
+- `/oct-reflect` — Aggregate spending patterns
+- `/oct-reflect week` — This week's summary
+- `/oct-reflect task SYS-1859` — Specific task costs
