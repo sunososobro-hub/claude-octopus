@@ -126,13 +126,34 @@ Remove Claude Octopus tools anytime.
 → Can be re-installed later
 ```
 
+## Features
+
+**💰 Cost Optimization**
+- `/oct-wake` — bootstrap and install
+- `/oct-focus` — analyze task, suggest model
+- `/oct-monitor` — smart context bloat detection (NEW)
+
+**💾 Session Management**  
+- `/oct-rest` — save checkpoint
+- `/oct-recall` — restore previous session
+
+**🧠 Memory & Analysis**
+- `/oct-dream` — consolidate memories
+- `/oct-monitor` — background monitoring (NEW)
+
+**❓ Help & Control**
+- `/oct-help` — unified help system
+- `/oct-forget` — uninstall tools
+
 ## Roadmap
 
 - `session/` — session continuity tools ✅
-- `learning/` — cost optimization and routing education ✅ (NEW)
-- `analysis/oct-router` — auto-routing system 🚀 (in progress)
-- `report/` — generate structured reports from conversations
-- `analysis/` — multi-agent problem analysis and RCA
+- `learning/` — cost optimization education ✅
+- `analysis/oct-router` — auto-routing ✅
+- `analysis/oct-monitor` — context monitoring 🚀 (NEW)
+- `analysis/oct-dream` — memory consolidation 🚀
+- `report/` — structured report generation
+- `analysis/` — multi-agent RCA workflows
 
 ## License
 

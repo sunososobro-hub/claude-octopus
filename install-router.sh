@@ -53,8 +53,32 @@ echo "• Example: 'Use Haiku instead? Saves $0.44 (79%)' [Yes/No]"
 echo ""
 echo "You control everything — suggestions only, not automatic"
 echo ""
+
+# Add oct-monitor to settings
+echo "Configuring background monitoring..."
+if command -v jq &> /dev/null; then
+  jq '.["oct-monitor"] = {
+    "enabled": true,
+    "mode": "smart",
+    "check-interval": {"normal": 1800, "warning": 900, "critical": 600},
+    "thresholds": {"warning": 70, "critical": 85},
+    "alert-once": true,
+    "cost-estimate": "NT$5-15/月"
+  }' "$SETTINGS_FILE" > "${SETTINGS_FILE}.tmp" && mv "${SETTINGS_FILE}.tmp" "$SETTINGS_FILE"
+fi
+
+echo ""
+echo "📊 Background monitoring enabled"
+echo "   • 30-min checks when idle"
+echo "   • 15-min checks when context > 70%"
+echo "   • Alert when approaching limit"
+echo "   • Cost: ~NT$5-15/month (smart, on-demand)"
+echo ""
+echo "To disable: /oct-monitor disable"
+echo ""
 echo "Try it now:"
 echo "• Ask a simple question → system suggests Haiku"
 echo "• Ask a complex question → system suggests Fable or Sonnet"
 echo "• Use /stats to see your cost breakdown"
+echo "• Use /oct-monitor status to see context usage"
 echo ""
