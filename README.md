@@ -11,6 +11,14 @@ Long Claude Code sessions get expensive. Reboots, context limits, and tab switch
 
 Three commands that let you save where you left off and pick it back up — with minimal token cost.
 
+**~50–100x cheaper than resuming a full session.** Restoring a session with `claude --resume` replays the entire conversation — every message and tool output, typically tens of thousands to 100k+ tokens. Loading an octopus summary costs **~1.5–2k tokens total** (measured: a real handoff note is under 1 KB), because you only reload what matters — the task, key findings, and next steps.
+
+| | Full `--resume` | `/oct-load` |
+|---|---|---|
+| Tokens to restore | 30k–150k+ | ~1.5k–2k |
+| What you get back | Everything, verbatim | The distilled context you actually need |
+| Works across machines | No | Yes — it's just a markdown file |
+
 ## Commands
 
 ### `/oct-summary`
@@ -61,9 +69,32 @@ That's it. No runtime, no database, no background process.
 
 Everything is plain markdown. You can read, edit, or delete any file directly.
 
+## Commands
+
+### `/oct-learning` (NEW)
+Interactive guide to cost optimization and auto-routing.
+```bash
+/oct-learning
+→ Learn about token costs
+→ Understand model selection
+→ Install auto-routing tools
+```
+
+### `/oct-route` (NEW)
+Analyze your current task and get model suggestions.
+```bash
+/oct-route
+→ Evaluates complexity: Low/Medium/High
+→ Shows current model vs recommended
+→ Estimates cost savings
+→ Asks: [Switch] [Keep] [Explain]
+```
+
 ## Roadmap
 
 - `session/` — session continuity tools ✅
+- `learning/` — cost optimization and routing education ✅ (NEW)
+- `analysis/oct-router` — auto-routing system 🚀 (in progress)
 - `report/` — generate structured reports from conversations
 - `analysis/` — multi-agent problem analysis and RCA
 
