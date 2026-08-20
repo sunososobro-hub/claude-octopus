@@ -63,10 +63,16 @@ Or use individual command help:
   - Alert when approaching limit (one-time)
   - Cost: ~NT$5-15/month
 
-**📈 /oct-size** — Quick context checker (NEW)
+**📈 /oct-size** — Quick context checker
   - Show current session size
   - Estimate token usage
   - Display health status
+
+**😴 /oct-sleep** — End-of-day wrap-up (NEW)
+  - Finalize work session
+  - Create final summary
+  - Update memory files
+  - Archive & prepare for tomorrow
 
 **❓ /oct-help** — This help (you are here)
   - View all commands

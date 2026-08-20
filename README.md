@@ -126,6 +126,16 @@ Remove Claude Octopus tools anytime.
 → Can be re-installed later
 ```
 
+### `/oct-sleep` — End-of-Day (NEW)
+Finalize work: summarize, update memories, prepare for rest.
+```bash
+/oct-sleep
+→ Create final summary
+→ Update memory files
+→ Archive session
+→ Ready for tomorrow's /oct-wake
+```
+
 ## Features
 
 **💰 Cost Optimization**
