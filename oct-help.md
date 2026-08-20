@@ -77,3 +77,25 @@ Or use individual command help:
 **❓ /oct-help** — This help (you are here)
   - View all commands
   - Get help for specific command
+
+### Organization Methods in `/oct-dream`
+
+**1. Auto Recommend**
+- Let system analyze and suggest
+- Fastest but less personal
+
+**2. Manual Select**  
+- Review each item individually
+- Slowest but complete control
+
+**3. By Task**
+- Group by project/issue (SYS-1859, etc)
+- Best for task-oriented developers
+
+**4. By Timeline**
+- Organize by weeks/phases
+- Best for progress review
+
+**5. Extract Patterns**
+- Identify recurring patterns
+- Best for knowledge accumulation
