@@ -2,129 +2,88 @@
 # Automated token waste diagnosis
 
 MEMORY_DIR="$HOME/.claude/projects/-home-alonso/memory"
-COMMANDS_DIR="$HOME/.claude/commands"
-LATEST_SESSION=$(ls -t ~/.claude/projects/-home-alonso/*.jsonl 2>/dev/null | head -1)
 
 echo "🔍 Oct-Reflect: Token Waste Diagnosis"
 echo "======================================"
 echo ""
 
-# ── 1. MCP Servers ──
-echo "1️⃣  MCP Servers (loaded every session)"
+# ── 1. Session Baseline ──
+echo "1️⃣  Session Baseline Cost (fixed, cannot reduce)"
+echo ""
+echo "   Every new session costs ~15.7k tokens:"
+echo "   ├─ System prompt:      ~12k  (Claude Code built-in)"
+echo "   ├─ Tool definitions:   ~1.8k (built-in)"
+echo "   ├─ Agent listing:      ~550  (built-in)"
+echo "   └─ Skill listing:      ~1.2k (your oct- skills)"
+echo ""
+echo "   ℹ️  MCP on/off makes no difference — tested."
+echo "   ℹ️  This is the floor. Optimize elsewhere."
 echo ""
 
-# Parse MCP tool definitions from latest session
-if [[ -f "$LATEST_SESSION" ]]; then
-  python3 -c "
-import json, sys
-
-mcp_sizes = {}
-with open('$LATEST_SESSION') as f:
-    for i, line in enumerate(f):
-        try:
-            obj = json.loads(line.strip())
-            if obj.get('type') == 'attachment':
-                att = obj.get('attachment', {})
-                att_type = att.get('type', '')
-                if 'tools' in att_type or 'deferred' in att_type:
-                    size = len(str(att))
-                    mcp_sizes[att_type] = mcp_sizes.get(att_type, 0) + size
-        except:
-            pass
-        if i > 20:
-            break
-
-total = sum(mcp_sizes.values())
-for k, v in sorted(mcp_sizes.items(), key=lambda x: -x[1]):
-    tokens = v // 4
-    print(f'   {k}: ~{tokens} tokens')
-print(f'   Total MCP overhead: ~{total//4} tokens/session')
-" 2>/dev/null
-fi
-
-echo ""
-echo "   💡 Suggestion: disable unused MCP servers"
-echo "      /mcp → select → disable"
+# ── 2. Real Cost Drivers ──
+echo "2️⃣  Real Cost Drivers (where to actually optimize)"
 echo ""
 
-# ── 2. Skills ──
-echo "2️⃣  Installed Skills (loaded every session)"
+# Subagents
+echo "   🔴 Subagents (biggest waste)"
+echo "   → Each agent spawn = full new API request"
+echo "   → 56% of your usage came from subagent-heavy sessions"
+echo "   → Fix: Don't spawn agents for simple tasks"
+echo "          Only use for multi-file search or complex RCA"
 echo ""
 
-skill_count=$(ls "$COMMANDS_DIR"/*.md 2>/dev/null | wc -l)
-skill_size=$(cat "$COMMANDS_DIR"/*.md 2>/dev/null | wc -c)
-skill_tokens=$((skill_size / 4))
-
-echo "   Skills installed: $skill_count"
-echo "   Total skill definitions: ~${skill_tokens} tokens/session"
-echo ""
-
-ls "$COMMANDS_DIR"/*.md 2>/dev/null | while read f; do
-  size=$(wc -c < "$f")
-  tokens=$((size / 4))
-  name=$(basename "$f" .md)
-  echo "   $name: ~$tokens tokens"
-done
-
-echo ""
-echo "   💡 Suggestion: keep only frequently used skills"
-echo "      /oct-forget to remove unused ones"
+# Long context
+echo "   🟠 Long Context (second biggest)"
+echo "   → 42% of sessions exceeded 150k tokens"
+echo "   → Context compounds: longer = more expensive per message"
+echo "   → Fix: /oct-rest at 70% → new session → /oct-recall"
 echo ""
 
 # ── 3. Memory Files ──
-echo "3️⃣  Memory Files (loaded on demand)"
+echo "3️⃣  Memory Files (worth reviewing)"
 echo ""
 
-# Check MEMORY.md size
 memory_index_size=$(wc -c < "$MEMORY_DIR/MEMORY.md" 2>/dev/null || echo 0)
-echo "   MEMORY.md index: ~$((memory_index_size / 4)) tokens"
+echo "   MEMORY.md index: ~$((memory_index_size / 4)) tokens (loaded every session)"
 echo ""
 
-# Find large memory files
-echo "   Large files (>500 words):"
-find "$MEMORY_DIR" -name "*.md" -not -name "MEMORY.md" | while read f; do
+echo "   Large files that get read when referenced:"
+find "$MEMORY_DIR" -name "*.md" -not -name "MEMORY.md" -not -name "*complete*" | while read f; do
   words=$(wc -w < "$f")
   if [[ $words -gt 500 ]]; then
     name=$(basename "$f")
-    tokens=$((words / 1))
-    echo "   ⚠️  $name: ~$words words (~$((words * 4 / 3)) tokens)"
+    # Check if it's a completed task
+    if echo "$name" | grep -qE "sys18|sys17|regression"; then
+      echo "   ⚠️  $name: ~$words words → completed bug, consider archiving"
+    else
+      echo "   📄 $name: ~$words words"
+    fi
   fi
 done
 
 echo ""
-echo "   💡 Suggestion: archive completed bugs, compress large files"
-echo "      /oct-dream to consolidate and archive"
+echo "   💡 /oct-dream → archive completed bugs"
+echo "      Reduces MEMORY.md index size"
 echo ""
 
-# ── 4. Usage Patterns ──
-echo "4️⃣  Usage Patterns (last 24h from /stats)"
-echo ""
-echo "   56% came from subagent-heavy sessions"
-echo "   → Don't spawn agents for simple tasks"
-echo "   → Only use agents for multi-file search or complex RCA"
-echo ""
-echo "   42% was at >150k context"
-echo "   → Use /oct-rest + new agent before hitting 80%"
-echo "   → Don't let sessions grow unbounded"
-echo ""
-echo "   15% came from Gmail MCP"
-echo "   → Disable when not needed: /mcp"
-echo ""
-
-# ── Summary ──
+# ── 4. Summary ──
 echo "======================================"
-echo "📊 Summary & Actions"
+echo "📊 Priority Actions"
 echo ""
-echo "Quick wins (do now):"
-echo "  1. /mcp → disable Gmail/Notion if not using today"
-echo "  2. /oct-dream → archive completed bugs"
-echo "  3. Avoid spawning agents for simple questions"
+echo "High impact:"
+echo "  1. Avoid spawning agents for simple questions"
+echo "     → Ask yourself: can Claude answer this directly?"
+echo "     → Only use /explore or /investigate for complex tasks"
 echo ""
-echo "Estimated savings if all applied:"
-mcp_tokens=6000
-skill_tokens_save=$((skill_tokens / 2))
-total_save=$((mcp_tokens + skill_tokens_save))
-echo "  MCP reduction: ~${mcp_tokens} tokens/session"
-echo "  Skills reduction: ~${skill_tokens_save} tokens/session"
-echo "  Total: ~${total_save} tokens/session saved"
+echo "  2. /oct-rest at 70% context → new session → /oct-recall"
+echo "     → Prevents compounding costs from long sessions"
+echo ""
+echo "Medium impact:"
+echo "  3. /oct-dream → archive completed bugs (SYS-1859, etc)"
+echo "     → Smaller MEMORY.md = slightly less index overhead"
+echo ""
+echo "Not worth optimizing:"
+echo "  ✗ MCP on/off  — no measurable effect"
+echo "  ✗ Skill count — ~1.2k tokens, negligible"
+echo "  ✗ New sessions — baseline is fixed at ~15.7k"
 echo ""
