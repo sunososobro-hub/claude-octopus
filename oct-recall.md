@@ -10,9 +10,13 @@ Load memory files into current session context. Category-based browsing.
 /oct-recall <keyword>    # Search across all memories
 ```
 
+## CRITICAL: Do NOT read any memory files until the user explicitly selects them.
+
 ## Step 1 — Show Categories
 
-Read `~/.claude/projects/-home-alonso/memory/MEMORY.md`. List the `##` sections with item count:
+Read ONLY `~/.claude/projects/-home-alonso/memory/MEMORY.md` (the index file).
+Count items under each `##` section. Show the list. Then STOP and wait for user input.
+Do NOT read any individual memory .md files at this step.
 
 ```
 🧠 oct-recall — Memories
@@ -25,12 +29,15 @@ Read `~/.claude/projects/-home-alonso/memory/MEMORY.md`. List the `##` sections 
   6  📚 Reference              (3)
   7  💬 Feedback               (4)
 
-Pick category (e.g. "1"), search ("/ keyword"), or load by name:
+Pick category (e.g. "1"), or search (e.g. "FT roaming"):
 ```
+
+**STOP. Wait for user response before doing anything else.**
 
 ## Step 2 — Show Category Items
 
-After user picks a category, list its items numbered:
+After user picks a category number, list its items from MEMORY.md. Then STOP.
+Do NOT read any memory files yet.
 
 ```
 🐛 Bug Investigations
@@ -38,22 +45,18 @@ After user picks a category, list its items numbered:
   1  SYS-1796 OWE APCli PMKID
   2  SYS-1811 mt7993 BTM UAF
   3  SYS-1821 MLO FT Roaming
-  4  SYS-1821 MLO FT Roaming Debug
-  5  SYS-1844 iPhone Reconnect
-  6  SYS-1859 Site-survey 卡30s
-  7  SYS-1764 Cross-band FT
-  8  5.1.0 MWS Regression
+  ...
 
 Load which? (e.g. "3 7", "all", or "b" to go back)
 ```
 
+**STOP. Wait for user to specify which items to load.**
+
 ## Step 3 — Load Selected Memories
 
-Read the selected `.md` files from `~/.claude/projects/-home-alonso/memory/` and output their full content into context.
+ONLY after user specifies items: read the selected `.md` files and output their content.
 
 Confirm: `✅ Loaded: SYS-1821, 5.1.0 MWS Regression`
-
-Memories stack — user can repeat to load from multiple categories.
 
 ## Search
 
