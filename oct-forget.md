@@ -2,36 +2,38 @@
 
 Remove or disable Claude Octopus tools.
 
-Choose to forget what you learned.
-
 ## Usage
 
 ```bash
-/oct-forget
+/oct-forget              # Show what to remove
+/oct-forget all          # Remove everything
+/oct-forget oct-focus    # Remove specific tool
+/oct-forget --help       # Show help
+/oct-forget help         # Show help
 ```
 
-Shows:
+When run without arguments, shows:
 ```
 🚮 Uninstall Claude Octopus
 
 Currently installed:
-  ✓ oct-wake      (onboarding & setup)
+  ✓ oct-wake      (cost optimization onboarding)
   ✓ oct-focus     (model suggestions)
   ✓ oct-dream     (memory consolidation)
-  ✓ oct-rest      (save sessions)
+  ✓ oct-save      (save sessions)
   ✓ oct-recall    (restore sessions)
 
 What to remove?
-  [oct-wake] [oct-focus] [oct-dream]
-  [oct-rest] [oct-recall]
-  [all] [cancel]
+  [oct-wake]      [oct-focus]     [oct-dream]
+  [oct-save]      [oct-recall]
+  [all]           [cancel]
 ```
 
 ## What It Does
 
 - Removes selected skills from `~/.claude/commands/`
 - Removes config from `~/.claude/settings.json`
-- Keeps summaries (can delete manually if needed)
+- Keeps summaries (you can delete manually if needed)
 - Can be re-installed anytime
 
 ## Examples
@@ -39,11 +41,4 @@ What to remove?
 ```bash
 /oct-forget oct-focus    # Remove just model suggestions
 /oct-forget all          # Remove everything
-```
-
-## Re-installation
-
-Anytime you want to use Claude Octopus again:
-```bash
-/oct-wake
 ```
