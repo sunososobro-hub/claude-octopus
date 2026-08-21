@@ -1,44 +1,60 @@
 # oct-recall
 
-Load memory files into current session context.
+Load memory files into current session context. Category-based browsing.
 
 ## Usage
 
 ```bash
-/oct-recall          # List all memories, pick to load
-/oct-recall <name>   # Load specific memory by name/keyword
+/oct-recall              # Show categories
+/oct-recall <category>   # Show items in a category
+/oct-recall <keyword>    # Search across all memories
 ```
 
-## How It Works
+## Step 1 — Show Categories
 
-Read `~/.claude/projects/-home-alonso/memory/MEMORY.md` and list all entries numbered.
+Read `~/.claude/projects/-home-alonso/memory/MEMORY.md`. List the `##` sections with item count:
 
 ```
 🧠 oct-recall — Memories
 
-   1  SYS-1796 OWE APCli PMKID
-   2  SYS-1811 mt7993 BTM UAF
-   3  SYS-1821 MLO FT Roaming
-   4  SYS-1844 iPhone Reconnect
-   5  SYS-1859 Site-survey 卡30s
-   6  SYS-1764 Cross-band FT
-   7  5.1.0 MWS Regression
-   8  Investigation Orchestrator SOP
-   9  Multi-Agent Cost Patterns
-  10  Model Roles
-  11  oct-watch Feature
-  ...
+  1  🐛 Bug Investigations    (8)
+  2  🏗️ Architecture Patterns  (2)
+  3  🛠️ Tools                  (2)
+  4  📖 SOPs                   (3)
+  5  🖥️ Environment            (5)
+  6  📚 Reference              (3)
+  7  💬 Feedback               (4)
 
-Which to load? (e.g. "3 8 9" or "all")
+Pick category (e.g. "1"), search ("/ keyword"), or load by name:
 ```
 
-Wait for user input, then read the selected `.md` files from
-`~/.claude/projects/-home-alonso/memory/` and output their full content.
+## Step 2 — Show Category Items
 
-Confirm: `✅ Loaded: SYS-1821, Investigation SOP, Multi-Agent Cost Patterns`
+After user picks a category, list its items numbered:
 
-## Notes
+```
+🐛 Bug Investigations
 
-- Memories stack — loading multiple at once is fine
-- Use before starting complex tasks to prime context
-- Session resume → use built-in `claude --resume` picker
+  1  SYS-1796 OWE APCli PMKID
+  2  SYS-1811 mt7993 BTM UAF
+  3  SYS-1821 MLO FT Roaming
+  4  SYS-1821 MLO FT Roaming Debug
+  5  SYS-1844 iPhone Reconnect
+  6  SYS-1859 Site-survey 卡30s
+  7  SYS-1764 Cross-band FT
+  8  5.1.0 MWS Regression
+
+Load which? (e.g. "3 7", "all", or "b" to go back)
+```
+
+## Step 3 — Load Selected Memories
+
+Read the selected `.md` files from `~/.claude/projects/-home-alonso/memory/` and output their full content into context.
+
+Confirm: `✅ Loaded: SYS-1821, 5.1.0 MWS Regression`
+
+Memories stack — user can repeat to load from multiple categories.
+
+## Search
+
+If user types `/ keyword`, scan all MEMORY.md entries for matches and show a flat numbered list to pick from.
