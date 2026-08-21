@@ -57,4 +57,14 @@ Memories stack — user can repeat to load from multiple categories.
 
 ## Search
 
-If user types `/ keyword`, scan all MEMORY.md entries for matches and show a flat numbered list to pick from.
+If user types a keyword, partial name, or natural language query (e.g. "FT roaming", "幫我找 XX 相關", "/ keyword"), scan all MEMORY.md entries for matches and show a flat numbered list to pick from:
+
+```
+🔍 "FT roaming" 相關
+
+  1  SYS-1821 MLO FT Roaming
+  2  SYS-1821 MLO FT Roaming Debug
+  3  SYS-1764 Cross-band FT
+
+Load which? (e.g. "1 2")
+```
