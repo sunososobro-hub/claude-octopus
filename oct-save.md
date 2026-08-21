@@ -44,13 +44,10 @@ Saves to `~/.claude/summaries/{hash}.md` for use with `/oct-recall`.
 
 1. Generate the summary in the format above.
 2. Save it to `~/.claude/summaries/{8-char-hash}.md` using the Write tool.
-3. Output the summary to the user so they can confirm it looks right.
-4. Then output this message exactly:
+3. Output only:
 
----
-✅ 已儲存。
+```
+✅ ~/.claude/summaries/{hash}.md
+```
 
-執行 `/clear` 可清空 context（context 清空後無法復原）。
-
-下次回來前記得先跑 `/oct-recall` 恢復狀態。
----
+Do NOT print the summary content.
