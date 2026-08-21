@@ -1,72 +1,44 @@
 # oct-recall
 
-Browse session history and memory files. Load selected context into current session.
+Load memory files into current session context.
 
 ## Usage
 
 ```bash
-/oct-recall          # Show sessions + memory list
-/oct-recall <id>     # Load a specific session's context
+/oct-recall          # List all memories, pick to load
+/oct-recall <name>   # Load specific memory by name/keyword
 ```
 
-## What It Shows
+## How It Works
 
-Two sections:
-
-### 📋 Sessions
-Run: `python3 ~/.claude/scripts/usage-analyze.py --recall`
-
-Shows last 10 sessions with description. User picks one to preview context (read first few user messages + last assistant summary from the session JSONL).
-
-### 🧠 Memories
-Read `~/.claude/projects/-home-alonso/memory/MEMORY.md` and list all entries with their one-line descriptions, numbered.
-
-User selects one or more (e.g. "1 3 5" or "SYS-1821 and SOP"). Read those memory files and output their content into the current context.
-
-## Example Output
+Read `~/.claude/projects/-home-alonso/memory/MEMORY.md` and list all entries numbered.
 
 ```
-📋 Sessions (last 10)
-
-  7d5eb4e3  2026-08-21  oct-watch、multi-agent 架構、記憶整理
-  fd957762  2026-08-21  oct-watch 開發、/clear API
-  d76c8f77  2026-08-21  oct-usage 開發、token usage 功能
-
-  Resume: claude --resume <id>
-  Load context here: /oct-recall <id>
-
-🧠 Memories
+🧠 oct-recall — Memories
 
    1  SYS-1796 OWE APCli PMKID
    2  SYS-1811 mt7993 BTM UAF
    3  SYS-1821 MLO FT Roaming
    4  SYS-1844 iPhone Reconnect
    5  SYS-1859 Site-survey 卡30s
-   6  Investigation Orchestrator SOP
-   7  Multi-Agent Cost Patterns
-   8  Model Roles
+   6  SYS-1764 Cross-band FT
+   7  5.1.0 MWS Regression
+   8  Investigation Orchestrator SOP
+   9  Multi-Agent Cost Patterns
+  10  Model Roles
+  11  oct-watch Feature
   ...
 
-Which memories to load? (e.g. "3 6 7" or Enter to skip)
+Which to load? (e.g. "3 8 9" or "all")
 ```
 
-## Loading Session Context
+Wait for user input, then read the selected `.md` files from
+`~/.claude/projects/-home-alonso/memory/` and output their full content.
 
-When user picks a session ID, read the session JSONL:
-`~/.claude/projects/-home-alonso/<full-id>.jsonl`
+Confirm: `✅ Loaded: SYS-1821, Investigation SOP, Multi-Agent Cost Patterns`
 
-Extract and summarize:
-- First 3 user messages (what was the task)
-- Last 3 assistant messages (what was concluded)
-- Any files modified (tool calls with Edit/Write)
+## Notes
 
-Present as compact context block (~300 words max).
-
-## Loading Memories
-
-When user selects memory numbers or names:
-- Read each .md file from `~/.claude/projects/-home-alonso/memory/`
-- Output full content of selected files
-- Confirm: `✅ Loaded: SYS-1821, Investigation SOP, Multi-Agent Cost Patterns`
-
-Memories stack — loading multiple is fine and encouraged before starting complex tasks.
+- Memories stack — loading multiple at once is fine
+- Use before starting complex tasks to prime context
+- Session resume → use built-in `claude --resume` picker
