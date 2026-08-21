@@ -43,7 +43,7 @@ Read `~/.claude/settings.json`. Add to `hooks.Stop`:
 ```json
 {
   "type": "command",
-  "command": "python3 -c \"import sys,json,subprocess; r=subprocess.run(['python3','/home/alonso/.claude/scripts/usage-analyze.py','--watch'],capture_output=True,text=True); print(json.dumps({'systemMessage':r.stdout.strip()}))\""
+  "command": "python3 -c \"import sys,json,subprocess,time; time.sleep(1); r=subprocess.run(['python3','/home/alonso/.claude/scripts/usage-analyze.py','--watch'],capture_output=True,text=True); print(json.dumps({'systemMessage':r.stdout.strip()}))\""
 }
 ```
 
