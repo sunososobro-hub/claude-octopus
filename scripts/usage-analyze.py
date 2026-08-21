@@ -52,7 +52,28 @@ def find_session(session_id=None):
     return max(files, key=lambda f: f.stat().st_mtime)
 
 
-def list_sessions(sort_by_cost=False, last_n=20):
+def get_session_desc(path, max_msgs=3):
+    snippets = []
+    try:
+        with open(path) as f:
+            for line in f:
+                if len(snippets) >= max_msgs:
+                    break
+                try:
+                    e = json.loads(line)
+                    if e.get("type") == "user" and not e.get("isSidechain"):
+                        content = e.get("message", {}).get("content", "")
+                        text = get_text(content).strip().replace("\n", " ")
+                        if text and not text.startswith("<"):
+                            snippets.append(text[:35])
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return "、".join(snippets) if snippets else ""
+
+
+def list_sessions(sort_by_cost=False, last_n=20, with_desc=False):
     projects = Path.home() / ".claude" / "projects"
     files = sorted(projects.rglob("*.jsonl"), key=lambda f: f.stat().st_mtime, reverse=True)
     rows = []
@@ -62,16 +83,23 @@ def list_sessions(sort_by_cost=False, last_n=20):
             continue
         cost = sum(calc_cost(r) for r in calls)
         date = calls[-1]["timestamp"][:10] if calls else "?"
-        rows.append((f.stem[:8], date, len(calls), cost))
+        desc = get_session_desc(f) if with_desc else ""
+        rows.append((f.stem[:8], date, len(calls), cost, desc))
     if sort_by_cost:
         rows.sort(key=lambda x: x[3], reverse=True)
     total = len(rows)
     rows = rows[:last_n]
     label = f"最新 {len(rows)} 筆（共 {total} 筆）" if total > last_n else f"{len(rows)} sessions"
-    print(f"\n{'Session':<12}  {'Date':<10}  {'Calls':>6}  {'Cost':>9}  {label}")
-    print("─" * 44)
-    for stem, date, n, cost in rows:
-        print(f"{stem:<12}  {date:<10}  {n:>6}  ${cost:.4f}")
+    if with_desc:
+        print(f"\n{'Session':<12}  {'Date':<10}  {'Calls':>5}  {'Cost':>8}  描述")
+        print("─" * 80)
+        for stem, date, n, cost, desc in rows:
+            print(f"{stem:<12}  {date:<10}  {n:>5}  ${cost:.4f}  {desc}")
+    else:
+        print(f"\n{'Session':<12}  {'Date':<10}  {'Calls':>6}  {'Cost':>9}  {label}")
+        print("─" * 44)
+        for stem, date, n, cost, desc in rows:
+            print(f"{stem:<12}  {date:<10}  {n:>6}  ${cost:.4f}")
     print()
 
 
@@ -318,6 +346,7 @@ def main():
     sort_cost = False
     show_n = None
     list_sessions_flag = False
+    recall_flag = False
     current_flag = False
     watch_flag = False
     session_id = None
@@ -342,6 +371,8 @@ def main():
             show_n = int(a.split("=")[1])
         elif a == "--sessions":
             list_sessions_flag = True
+        elif a == "--recall":
+            recall_flag = True
         elif a == "--current":
             current_flag = True
         elif a == "--watch":
@@ -367,6 +398,10 @@ def main():
         ctx_limit = _CONTEXT_WINDOWS.get(r.get("model", ""), _DEFAULT_CONTEXT_WINDOW)
         ctx_pct = int(ctx_tokens / ctx_limit * 100)
         print(f"⌚ {model_short}  In:{in_c}  CR:{cr_c}  CW:{cw_c}  Out:{out_c}  =${cost:.4f}  ctx:{ctx_pct}%")
+        sys.exit(0)
+
+    if recall_flag:
+        list_sessions(sort_by_cost=sort_cost, last_n=last_n if last_n is not None else 10, with_desc=True)
         sys.exit(0)
 
     if list_sessions_flag:
