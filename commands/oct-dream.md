@@ -4,6 +4,9 @@ Consolidate and organize memories after a work session.
 
 Like processing experiences during sleep — extract patterns, merge related items, archive completed work.
 
+Also sweeps `~/.claude/summaries/` (the `/oct-save` checkpoints `/oct-wake` reads) —
+not just the long-term `memory/` directory — see "Checkpoint Sweep" below.
+
 ## Usage
 
 ```bash
@@ -45,6 +48,42 @@ Choose organization method:
 
 Choose: [1-5] or multiple?
 ```
+
+## Checkpoint Sweep
+
+`/oct-save` checkpoints in `~/.claude/summaries/*.md` (excluding the
+`.last_woken` marker) accumulate over time — `/oct-wake` only shows recent
+ones by default, but old ones never actually go away on their own.
+
+**Don't decide by age alone** — an old checkpoint isn't automatically
+irrelevant (the user may genuinely still be mid-task on something they
+haven't touched in weeks). Instead, scan each checkpoint's content for
+completion signals: task title or `## Next Steps`/`## 下一步` containing
+words like 完結/已完成/done/committed, or a next-steps section that's
+empty/resolved.
+
+1. List candidates that look done, grouped by evident project/ticket
+   (e.g. multiple `sys1874*` checkpoints for the same ticket). Number
+   them (1, 2, 3...) — never make the user refer back to an 8-char hash
+   to answer.
+2. For each, give a one-line recommendation (archive or keep) with the
+   reason, not just a bare list — the user shouldn't have to re-derive
+   the judgment themselves. Ask once, in a form that accepts a single
+   bulk answer ("全部歸檔" / "都可以" / "2,4 不要" etc.) — never make the
+   user answer item-by-item; that's the friction this whole batching
+   exists to avoid. Never archive silently regardless of how confident
+   the recommendation is — a bulk "yes" from the user is still required.
+3. For confirmed ones: `mkdir -p ~/.claude/summaries/archive` and move the
+   file there (`git mv`-style — just relocate, don't delete or rewrite
+   content).
+4. If a checkpoint's content would still be valuable long-term (a
+   decision, a gotcha, a pattern — not just "what I was doing"), also
+   fold the relevant bit into the normal `memory/` consolidation below,
+   the same as any other source.
+
+After the sweep, `/oct-wake` (default view) will naturally show a shorter,
+more current list since archived checkpoints move out of the directory it
+scans; `/oct-wake --all` still shows both active and archived.
 
 ## After Consolidation
 

@@ -1,0 +1,16 @@
+{
+  "name": "oct-toolkit",
+  "description": "Token-frugal session memory and usage tracking for Claude Code: curated save/wake handoff instead of full-session resume, duplicate-read guarding, and real (not estimated) 5h/7d rate-limit tracking.",
+  "version": "0.1.0",
+  "author": {
+    "name": "alonso"
+  },
+  "license": "MIT",
+  "keywords": [
+    "memory",
+    "session",
+    "token-usage",
+    "rate-limits",
+    "handoff"
+  ]
+}

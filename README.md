@@ -1,169 +1,70 @@
-# claude-octopus 🐙
+# oct-toolkit
 
-> Claude Code commands for session continuity and workflow management.
-> Like an octopus — multiple arms working in parallel, coordinated by one brain.
+Token-frugal session memory and usage tracking for Claude Code.
 
-## The Problem
+## Why
 
-Long Claude Code sessions get expensive. Reboots, context limits, and tab switches break your flow. You end up re-explaining everything from scratch.
+`claude --resume` reattaches a whole old session — every message, every file
+read, still sitting in context on every future turn. This toolkit's core bet
+is that **curated, selective recall beats automatic full-context reload**:
+save a small handoff note, start clean, load only what's actually relevant.
 
-## The Solution
+This is a deliberate contrast to auto-capture-everything memory tools. Those
+are convenient, but real users report they can *increase* token usage (the
+compression/injection steps aren't free, and automatic relevance-guessing
+over-injects). Nothing here loads automatically except a one-line "you have
+a pending checkpoint" nudge — everything else is loaded on request.
 
-Three commands that let you save where you left off and pick it back up — with minimal token cost.
+## What's in it
 
-**~50–100x cheaper than resuming a full session.** Restoring a session with `claude --resume` replays the entire conversation — every message and tool output, typically tens of thousands to 100k+ tokens. Loading an octopus summary costs **~1.5–2k tokens total** (measured: a real handoff note is under 1 KB), because you only reload what matters — the task, key findings, and next steps.
-
-| | Full `--resume` | `/oct-load` |
-|---|---|---|
-| Tokens to restore | 30k–150k+ | ~1.5k–2k |
-| What you get back | Everything, verbatim | The distilled context you actually need |
-| Works across machines | No | Yes — it's just a markdown file |
-
-## Commands
-
-### `/oct-summary`
-Save the current session as a compact handoff note (~400 tokens).
-
-```
-/oct-summary
-→ Saved as a1b2c3d4. Use /oct-load to restore in a future session.
-```
-
-### `/oct-load`
-Browse and restore previous sessions.
-
-```
-/oct-load
-→ Available summaries (last 5):
-    1. a1b2c3d4 | 2026-08-20 16:00  —  Debugging MT7927 wifi driver
-    2. e5f6a7b8 | 2026-08-19 22:30  —  SYS-1859 scan fix verification
-  Which to load? 
-```
-
-### `/oct-sessions [filter]`
-Browse your Claude Code session history.
-
-```
-/oct-sessions           # today + yesterday (default)
-/oct-sessions yesterday # yesterday only
-/oct-sessions -2        # 2 days ago
-/oct-sessions 5         # last 5 sessions
-/oct-sessions all       # everything
-```
+- **`/oct-save`** — write a ~1-2k token checkpoint before `/clear`
+- **`/oct-wake`** — load the latest checkpoint (not the whole old session) in one shot
+- **`/oct-recall`** — category-based browsing into curated long-term memory files
+- **`/oct-dream`** / **`/oct-sleep`** — periodic memory consolidation
+- **`/oct-watch`** — per-response token/cost breakdown (Stop hook), plus a
+  persistent status-bar line with Anthropic's *official* 5h/7d rate-limit %
+  and a reset-vs-ETA comparison so you can tell at a glance whether you'll
+  hit the cap before the window resets on its own
+- **Read-dedup hook** — blocks a byte-identical re-read of a file already
+  read this session (same path, mtime, size, offset/limit), so duplicate
+  content doesn't double up in context
 
 ## Install
 
+Clone this repo into your plugins directory:
+
 ```bash
-git clone https://github.com/your-username/claude-octopus
-cd claude-octopus
-./install.sh
+git clone <this-repo> ~/.claude/plugins/oct-toolkit
 ```
 
-That's it. No runtime, no database, no background process.
+Claude Code should pick up the plugin's commands and hooks (`SessionStart`,
+`PreToolUse[Read]`, `Stop`) automatically. If your Claude Code version
+prefers marketplace-based install instead, add this repo as a marketplace
+source and install `oct-toolkit` from it the same way.
 
-## How It Works
+**One manual step**: the `--watch` ETA line is most accurate when it can
+read Anthropic's real rate-limit data, which requires a `statusLine` hook.
+Plugins shouldn't silently claim your terminal's status bar (it's a
+singleton setting), so wire this yourself in `~/.claude/settings.json`:
 
-- `/oct-summary` writes a markdown file to `~/.claude/summaries/{hash}.md`
-- `/oct-load` reads those files and restores context on demand
-- `/oct-sessions` parses Claude Code's own `.jsonl` session logs
-
-Everything is plain markdown. You can read, edit, or delete any file directly.
-
-## Commands
-
-### `/oct-wake` — Bootstrap
-First-time setup: install cost optimization tools.
-```bash
-/oct-wake
-→ Detect expensive model usage
-→ Offer to install auto-routing
-→ Ready immediately after setup
+```json
+"statusLine": {
+  "type": "command",
+  "command": "python3 ~/.claude/plugins/oct-toolkit/scripts/usage-analyze.py --statusline-hook"
+}
 ```
 
-### `/oct-focus` — Analyze
-Think clearly: analyze task and suggest optimal model.
-```bash
-/oct-focus
-→ Evaluate complexity: Low/Medium/High
-→ Show current vs recommended model
-→ Display cost savings
-→ Ask: switch or keep?
-```
+It prints a status line (model, context %, 5h/7d reset+ETA) — Claude Code
+reserves that bottom row whenever any `statusLine` hook is configured at
+all, so there's no point leaving it blank. Without this step, `/oct-watch`
+still works, just with a less accurate self-calibrated estimate instead of
+official numbers.
 
-### `/oct-dream` — Consolidate
-Process your memories like sleep: organize and optimize.
-```bash
-/oct-dream
-→ Scan memory files
-→ Detect duplicates and patterns
-→ Suggest merges and archiving
-→ Keep system clean
-```
+## Requirements
 
-### `/oct-rest` — Checkpoint
-Save current session for later restoration.
-```bash
-/oct-rest
-→ Create handoff summary (~1-2k tokens)
-→ Capture task, findings, next steps
-→ Save to ~/.claude/summaries/
-```
-
-### `/oct-recall` — Restore
-Browse history and restore previous sessions.
-```bash
-/oct-recall [filter]
-→ View session history
-→ Pick one to restore
-→ Continue from where you left off
-```
-
-### `/oct-forget` — Uninstall
-Remove Claude Octopus tools anytime.
-```bash
-/oct-forget
-→ Select what to remove
-→ Can be re-installed later
-```
-
-### `/oct-sleep` — End-of-Day (NEW)
-Finalize work: summarize, update memories, prepare for rest.
-```bash
-/oct-sleep
-→ Create final summary
-→ Update memory files
-→ Archive session
-→ Ready for tomorrow's /oct-wake
-```
-
-## Features
-
-**💰 Cost Optimization**
-- `/oct-wake` — bootstrap and install
-- `/oct-focus` — analyze task, suggest model
-- `/oct-monitor` — smart context bloat detection (NEW)
-
-**💾 Session Management**  
-- `/oct-rest` — save checkpoint
-- `/oct-recall` — restore previous session
-
-**🧠 Memory & Analysis**
-- `/oct-dream` — consolidate memories
-- `/oct-monitor` — background monitoring (NEW)
-
-**❓ Help & Control**
-- `/oct-help` — unified help system
-- `/oct-forget` — uninstall tools
-
-## Roadmap
-
-- `session/` — session continuity tools ✅
-- `learning/` — cost optimization education ✅
-- `analysis/oct-router` — auto-routing ✅
-- `analysis/oct-monitor` — context monitoring 🚀 (NEW)
-- `analysis/oct-dream` — memory consolidation 🚀
-- `report/` — structured report generation
-- `analysis/` — multi-agent RCA workflows
+- Claude Code ≥2.1.80 for official `rate_limits` (older versions fall back
+  automatically)
+- Python 3
 
 ## License
 
