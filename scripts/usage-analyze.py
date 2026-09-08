@@ -33,7 +33,11 @@ _SEVEN_D_THROTTLE_SECONDS = 3600        # one sample per hour is plenty
 _SEVEN_D_WINDOW_SECONDS = 48 * 3600     # look at the last 48h for "current pace"
 _SEVEN_D_MIN_SPAN_SECONDS = 2 * 3600    # need 2h of real spread before trusting the rate
 
-_CTX_NUDGE_THRESHOLD = 50  # ctx% above which a cold-cache resume starts actually hurting
+_CTX_NUDGE_THRESHOLD = 50  # fallback floor: below this, never nudge regardless of trend
+_CTX_RATE_WINDOW_SECONDS = 15 * 60  # ctx can swing fast within one session; shorter window than 5h's
+_CTX_MIN_SPAN_SECONDS = 120         # need 2 min of real spread before trusting the ctx growth rate
+_CTX_NUDGE_ETA_MIN = 15             # nudge when projected time-to-100% ctx is under this many minutes
+_CTX_HARD_FLOOR = 85                # nudge regardless of trend once ctx is this high (no time to react)
 
 def _load_prices():
     prices = dict(_BUILTIN_PRICES)
@@ -392,10 +396,24 @@ def statusline_hook():
         # Prompt cache TTL is ~1h. A big context that sits idle past that
         # (end of day, switching tasks) means whoever resumes it eats a
         # full reprocess — cache_write on the entire thing, not a cheap
-        # cache_read. No way to detect "about to step away" directly, so
-        # just keep the nudge visible whenever ctx is already large enough
-        # that a cold-cache resume would actually hurt.
-        if ctx_pct >= _CTX_NUDGE_THRESHOLD:
+        # cache_read. Rather than a flat "% above X" trip-wire, track recent
+        # growth and project it forward — same "burn rate vs remaining
+        # runway" idea as the 5h/7d 可撐 line below, applied to ctx instead
+        # of quota.
+        ctx_hist = state.get("ctx_history", [])
+        if not ctx_hist or (now - datetime.fromisoformat(ctx_hist[-1][0])) >= timedelta(seconds=30):
+            ctx_hist.append([now.isoformat(), ctx_pct])
+        ctx_cutoff = now - timedelta(seconds=_CTX_RATE_WINDOW_SECONDS)
+        ctx_hist = [[t, p] for t, p in ctx_hist if datetime.fromisoformat(t) >= ctx_cutoff]
+        state["ctx_history"] = ctx_hist
+
+        eta_min = _ctx_eta_minutes(ctx_hist, now)
+        nudge = False
+        if ctx_pct >= _CTX_HARD_FLOOR:
+            nudge = True
+        elif ctx_pct >= _CTX_NUDGE_THRESHOLD and eta_min is not None and eta_min < _CTX_NUDGE_ETA_MIN:
+            nudge = True
+        if nudge:
             ctx_part += "  💡ctx偏高,收工前建議/oct-save"
         parts.append(ctx_part)
 
@@ -412,6 +430,22 @@ def _fmt_minutes(m):
     if m < 1440:
         return f"{m/60:.1f}h"
     return f"{m/1440:.1f}d"
+
+
+def _ctx_eta_minutes(hist, now):
+    """Projected minutes until ctx% hits 100 at the recent growth rate, or
+    None if there isn't enough history yet or ctx isn't currently growing."""
+    if len(hist) < 2:
+        return None
+    t0, p0 = hist[0]
+    span_min = (now - datetime.fromisoformat(t0)).total_seconds() / 60
+    if span_min * 60 < _CTX_MIN_SPAN_SECONDS:
+        return None
+    _, p1 = hist[-1]
+    rate = (p1 - p0) / span_min
+    if rate <= 1e-6:
+        return None
+    return (100 - p1) / rate
 
 
 def _reset_eta_segment(pct, resets_at, hist, now, min_span_min):
