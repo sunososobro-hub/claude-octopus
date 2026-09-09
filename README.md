@@ -38,6 +38,47 @@ compression/injection steps aren't free, and automatic relevance-guessing
 over-injects). Nothing here loads automatically except a one-line "you have
 a pending checkpoint" nudge — everything else is loaded on request.
 
+## Does it actually save tokens?
+
+Task type, session length, and model all change the ratio, so don't take
+anyone else's number as a guarantee for your own setup. Check it yourself,
+with one command:
+
+```
+/oct-checkup --current
+```
+
+Run it right before you'd normally `/oct-nap` (context feels fat) to get
+**Before**. Then `/oct-nap` → `/clear` → `/oct-wake`, and run it again in
+the new session to get **After**. The gap between the two is your real
+saving, for your own workload.
+
+For reference, here's what that comparison actually looked like on my
+machine — 8 real past sessions, resumed for real (`claude --resume`) vs.
+loaded via `/oct-wake` with one fixed checkpoint, same model pinned for
+both sides so the comparison isn't skewed by an unrelated cache miss:
+
+| Old session size | `--resume` tokens | `--resume` cost | `/oct-wake` tokens | `/oct-wake` cost | Cost saved |
+|---|---|---|---|---|---|
+| 21K | 21,326 | $0.0880 | 25,569 | $0.0610 | 31% |
+| 26K | 25,966 | $0.0616 | 25,848 | $0.0514 | 17% |
+| 37K | 36,532 | $0.1030 | 28,310 | $0.0642 | 38% |
+| 62K | 61,713 | $0.1971 | 25,620 | $0.0481 | 76% |
+| 72K | 71,735 | $0.2738 | 27,887 | $0.0586 | 79% |
+| 98K | 98,229 | $0.3364 | 27,410 | $0.0611 | 82% |
+| 158K | 158,225 | $0.6025 | 26,910 | $0.0734 | 88% |
+| 159K | 158,745 | $0.5476 | 26,959 | $0.0191 | 97% |
+
+Not uniformly dramatic — the two smallest sessions (under ~30K) save less
+because `/oct-wake`'s own fixed overhead (shared cache + the checkpoint
+itself) is a bigger fraction of a tiny session. But 6 of these 8 sessions
+land at 62K+, which is a normal size for a real working session — and
+that's exactly where savings are consistent, 76–97%.
+
+If the status bar is on (`/oct-pulse`), you don't even need to run the
+command yourself — the context size is already sitting there live, before
+and after.
+
 ## What's in it
 
 - **`/oct-nap`** — write a ~1-2k token checkpoint before `/clear`
