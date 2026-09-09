@@ -103,9 +103,9 @@ def list_sessions(sort_by_cost=False, last_n=20, with_desc=False):
         rows.sort(key=lambda x: x[3], reverse=True)
     total = len(rows)
     rows = rows[:last_n]
-    label = f"最新 {len(rows)} 筆（共 {total} 筆）" if total > last_n else f"{len(rows)} sessions"
+    label = f"latest {len(rows)} (of {total})" if total > last_n else f"{len(rows)} sessions"
     if with_desc:
-        print(f"\n{'Session':<12}  {'Date':<10}  {'Calls':>5}  {'Cost':>8}  描述")
+        print(f"\n{'Session':<12}  {'Date':<10}  {'Calls':>5}  {'Cost':>8}  Description")
         print("─" * 80)
         for stem, date, n, cost, desc in rows:
             print(f"{stem:<12}  {date:<10}  {n:>5}  ${cost:.4f}  {desc}")
@@ -400,8 +400,8 @@ def statusline_hook():
         # full reprocess — cache_write on the entire thing, not a cheap
         # cache_read. Rather than a flat "% above X" trip-wire, track recent
         # growth and project it forward — same "burn rate vs remaining
-        # runway" idea as the 5h/7d 可撐 line below, applied to ctx instead
-        # of quota.
+        # runway" idea as the 5h/7d runway line below, applied to ctx
+        # instead of quota.
         ctx_hist = state.get("ctx_history", [])
         if not ctx_hist or (now - datetime.fromisoformat(ctx_hist[-1][0])) >= timedelta(seconds=30):
             ctx_hist.append([now.isoformat(), ctx_pct])
@@ -416,7 +416,7 @@ def statusline_hook():
         elif ctx_pct >= _CTX_NUDGE_THRESHOLD and eta_min is not None and eta_min < _CTX_NUDGE_ETA_MIN:
             nudge = True
         if nudge:
-            ctx_part += "  💡ctx偏高,收工前建議/oct-nap"
+            ctx_part += "  💡ctx high, consider /oct-nap before stepping away"
         parts.append(ctx_part)
 
     eta = official_eta_line()
@@ -451,10 +451,10 @@ def _ctx_eta_minutes(hist, now):
 
 
 def _reset_eta_segment(pct, resets_at, hist, now, min_span_min):
-    """reset:X / 可撐:Y for one rate-limit window (5h or 7d) — "可撐" (how
-    much longer you can keep going at the current pace before hitting the
-    cap), not a generic ETA. Returns None when there's neither a reset time
-    nor enough history to say anything."""
+    """reset:X / runway:Y for one rate-limit window (5h or 7d) — "runway"
+    (how much longer you can keep going at the current pace before hitting
+    the cap), not a generic ETA. Returns None when there's neither a reset
+    time nor enough history to say anything."""
     remain_min = None
     if resets_at:
         reset_dt = datetime.fromtimestamp(resets_at, tz=timezone.utc)
@@ -463,7 +463,7 @@ def _reset_eta_segment(pct, resets_at, hist, now, min_span_min):
             remain_min = m
 
     eta_min = None
-    eta_note = "採樣中"
+    eta_note = "sampling"
     if len(hist) >= 2:
         t0, p0 = hist[0]
         span_min = (now - datetime.fromisoformat(t0)).total_seconds() / 60
@@ -472,11 +472,11 @@ def _reset_eta_segment(pct, resets_at, hist, now, min_span_min):
         # require real spread before trusting the rate.
         if span_min < min_span_min:
             wait_min = min_span_min - span_min
-            eta_note = f"採樣中,還需{_fmt_minutes(wait_min)}"
+            eta_note = f"sampling, {_fmt_minutes(wait_min)} more needed"
         else:
             rate = (pct - p0) / span_min
             if rate <= 1e-6:
-                eta_note = "用量無變化"
+                eta_note = "usage flat"
             else:
                 eta_min = (100 - pct) / rate
 
@@ -501,7 +501,7 @@ def _reset_eta_segment(pct, resets_at, hist, now, min_span_min):
         verdict = "  !"
         fired = True
 
-    return f"reset:{reset_str} / 可撐:{eta_str}{verdict}", fired
+    return f"reset:{reset_str} / runway:{eta_str}{verdict}", fired
 
 
 def official_eta_line():
@@ -520,7 +520,7 @@ def official_eta_line():
         return None
 
     pct = five["used_percentage"]
-    line = f"📈 5h視窗:{pct:.0f}%"
+    line = f"📈 5h window:{pct:.0f}%"
     any_fired = False
 
     seg5 = _reset_eta_segment(
@@ -528,7 +528,7 @@ def official_eta_line():
         min_span_min=3,
     )
     if seg5 is None:
-        line += "  (採樣中...)"
+        line += "  (sampling...)"
     else:
         seg5_text, fired5 = seg5
         line += f"  {seg5_text}"
@@ -548,7 +548,7 @@ def official_eta_line():
             any_fired = any_fired or fired7
 
     if any_fired:
-        line += "  |  !：代表目前速率開發的話會在reset前燒完token"
+        line += "  |  !: at this pace you'll burn through the quota before it resets"
 
     return line
 
@@ -586,7 +586,7 @@ def paginate(lines, page_size):
         print(line)
         if (i + 1) % page_size == 0 and i + 1 < total:
             try:
-                ans = input(f"\n── {i+1}/{total} 筆 ── Enter 繼續 / q 離開: ")
+                ans = input(f"\n── {i+1}/{total} ── Enter to continue / q to quit: ")
                 if ans.strip().lower() == "q":
                     break
             except (EOFError, KeyboardInterrupt):
@@ -597,7 +597,7 @@ def paginate(lines, page_size):
 _HABIT_LONG_ANSWER_CHARS = 1200   # an answer this long is "a wall" for follow-up purposes
 _HABIT_LONG_ANSWER_STEPS = 5      # or this many numbered lines — a step-by-step dump
 _HABIT_SHORT_QUESTION_CHARS = 60  # a follow-up this short right after a wall = didn't land
-_HABIT_FAT_CTX_TOKENS = 100_000   # cache_read above this: every "好" costs real money
+_HABIT_FAT_CTX_TOKENS = 100_000   # cache_read above this: even a one-word reply costs real money
 _HABIT_TINY_PROMPT_CHARS = 30
 _HABIT_FAT_SESSION_END = 80_000   # session ended this fat without a nap = cold resume later
 _HABIT_MAX_EXAMPLES = 2
@@ -731,53 +731,53 @@ def habits_report(days=7):
                 fat_no_nap.append((sid, last["cache_read"], end))
 
     out = []
-    out.append(f"🩺 oct-checkup habits  |  過去 {days} 天，{len(files)} 個 session\n")
+    out.append(f"🩺 oct-checkup habits  |  last {days} days, {len(files)} sessions\n")
     fired = 0
 
     def ex_line(sid, ts, text):
-        return f"      · {sid} {ts[5:16].replace('T', ' ')}  「{_snip(text)}」"
+        return f"      · {sid} {ts[5:16].replace('T', ' ')}  \"{_snip(text)}\""
 
     if wall_then_q:
         fired += 1
         cost = sum(c for c, *_ in wall_then_q)
-        out.append(f"1. 長篇回答後馬上回頭問短問題  ×{len(wall_then_q)}  光重讀 context ≈${cost:.2f}")
-        out.append("   Claude 一次倒一大段（或 5 步以上），你看到一半就得問。多問的每一句都要重讀整段對話。")
+        out.append(f"1. Long answer, immediate short follow-up question  ×{len(wall_then_q)}  re-read cost alone ≈${cost:.2f}")
+        out.append("   Claude dumps a wall of text (or 5+ steps) in one go, and you have to ask a question halfway through. Every follow-up re-reads the whole conversation.")
         for c, sid, ts, txt in sorted(wall_then_q, reverse=True)[:_HABIT_MAX_EXAMPLES]:
             out.append(ex_line(sid, ts, txt))
-        out.append("   建議規則：操作型流程一次只給一步、標明對象、等回報再給下一步；長結論寫檔只給路徑。\n")
+        out.append("   Suggested rule: give operational steps one at a time, name the target, wait for a report before the next step; write long conclusions to a file and share only the path.\n")
 
     if fat_chatter:
         fired += 1
         cost = sum(c for c, *_ in fat_chatter)
-        out.append(f"2. 對話很胖時還在短往返  ×{len(fat_chatter)}  光重讀 context ≈${cost:.2f}")
-        out.append(f"   context 超過 {_HABIT_FAT_CTX_TOKENS // 1000}K 之後，連回一句「好」都要付整段重讀的錢。")
+        out.append(f"2. Short back-and-forth on an already-fat context  ×{len(fat_chatter)}  re-read cost alone ≈${cost:.2f}")
+        out.append(f"   Once context passes {_HABIT_FAT_CTX_TOKENS // 1000}K, even a one-word reply costs a full re-read.")
         for c, sid, ts, txt, ctx in sorted(fat_chatter, reverse=True)[:_HABIT_MAX_EXAMPLES]:
-            out.append(ex_line(sid, ts, txt) + f"  ctx {fmt_k(ctx)} → ${c:.2f} 只為了讀這句")
-        out.append("   建議習慣：ctx 過半就 /oct-nap 然後 /clear，用便條接續，不要拖著胖對話。\n")
+            out.append(ex_line(sid, ts, txt) + f"  ctx {fmt_k(ctx)} → ${c:.2f} just to read this line")
+        out.append("   Suggested habit: once ctx passes half, /oct-nap then /clear — pick up with the note instead of dragging a fat conversation along.\n")
 
     if len(corrections) >= 3:
         fired += 1
         by_sess = {}
         for sid, ts, txt in corrections:
             by_sess.setdefault(sid, []).append((ts, txt))
-        out.append(f"3. 反覆糾正 Claude  ×{len(corrections)}，跨 {len(by_sess)} 個 session")
-        out.append("   同一種糾正說第二次，就代表它該是一條長期記憶，不是一句話。")
+        out.append(f"3. Repeated corrections to Claude  ×{len(corrections)}, across {len(by_sess)} sessions")
+        out.append("   The same correction said a second time means it belongs in long-term memory, not a one-off message.")
         for sid, ts, txt in corrections[-_HABIT_MAX_EXAMPLES:]:
             out.append(ex_line(sid, ts, txt))
-        out.append("   建議：把重複出現的那條糾正存成 feedback 記憶（規則 + 為什麼 + 什麼時候套用）。\n")
+        out.append("   Suggestion: turn the recurring correction into a feedback memory (rule + why + when it applies).\n")
 
     if fat_no_nap:
         fired += 1
-        out.append(f"4. 胖 session 結束時沒寫便條  ×{len(fat_no_nap)}")
-        out.append(f"   結束時 context 還有 {_HABIT_FAT_SESSION_END // 1000}K+，之後若 --resume 就是整段冷重算。")
+        out.append(f"4. Fat session ended without a checkpoint  ×{len(fat_no_nap)}")
+        out.append(f"   Context was still {_HABIT_FAT_SESSION_END // 1000}K+ at the end — a later --resume means a full cold re-read.")
         for sid, cr, end in sorted(fat_no_nap, key=lambda x: -x[1])[:_HABIT_MAX_EXAMPLES]:
             out.append(f"      · {sid}  ctx {fmt_k(cr)}  {datetime.fromtimestamp(end).strftime('%m-%d %H:%M')}")
-        out.append("   建議習慣：收工前 /oct-nap（或 /oct-sleep），下次 /oct-wake 只讀 1-2k 便條。\n")
+        out.append("   Suggested habit: /oct-nap (or /oct-sleep) before stepping away — next time /oct-wake only reads a 1-2k note.\n")
 
     if fired == 0:
-        out.append(f"✅ 過去 {days} 天沒看到明顯的浪費模式。")
+        out.append(f"✅ No obvious waste patterns in the last {days} days.")
     else:
-        out.append("要把哪幾條存成長期記憶？（例：「1 3」/「都要」/「不用」）")
+        out.append("Which of these should be saved as long-term memory? (e.g. \"1 3\" / \"all of them\" / \"none\")")
     print("\n".join(out))
 
 
@@ -878,7 +878,7 @@ def main():
         cw_c  = fmt_kc(r['cache_write'], r['cache_write'] * p['cache_write'] / M)
         out_c = fmt_kc(r['output'],      r['output']      * p['output']      / M)
         print(f"💰 In:{in_c}  CR:{cr_c}  CW:{cw_c}  Out:{out_c}  =${cost:.4f}")
-        # Model name, ctx%, and 5h/7d reset+可撐 are NOT repeated here — all
+        # Model name, ctx%, and 5h/7d reset+runway are NOT repeated here — all
         # already always-visible in the statusLine (see statusline_hook).
         # One surface, one number, per metric.
         sys.exit(0)
@@ -932,9 +932,9 @@ def main():
     date = calls[0]["timestamp"][:10] if calls[0]["timestamp"] else "?"
     shown = len(calls)
     if last_n and total_calls > last_n:
-        label = f"最新 {shown} 筆（共 {total_calls} 筆）"
+        label = f"latest {shown} (of {total_calls})"
     elif last_n:
-        label = f"最新 {shown} 筆"
+        label = f"latest {shown}"
     else:
         label = f"{shown} API calls"
 

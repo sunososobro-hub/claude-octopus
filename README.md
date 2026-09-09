@@ -2,6 +2,29 @@
 
 Token-frugal session memory and usage tracking for Claude Code.
 
+## When to use it
+
+Short version: it makes Claude Code remember things the way a person would,
+without getting more expensive the longer you use it.
+
+- **Starting work for the day** → `/oct-wake`: picks up yesterday's note
+  instead of re-reading the whole old conversation (which costs a lot more).
+- **Mid-task, context getting fat, or stepping away for a bit** →
+  `/oct-nap`, then `/clear`: writes a ~1-2k word note, clears, `/oct-wake`
+  picks it back up next time.
+- **"Didn't I run into this before?"** → `/oct-wake <keyword>`: searches
+  checkpoints and long-term memory together — no need to remember which
+  pool something lives in.
+- **Wrapping up for the day** → `/oct-sleep`: writes the note and
+  consolidates memory in one shot. In a multi-window day, run this only in
+  the last window you close; the others just `/oct-nap`.
+- **Wondering what you've spent** → the status bar (turned on by
+  `/oct-pulse`) shows it live; for a detailed breakdown, or to check
+  whether you have any wasteful habits, use `/oct-checkup`.
+
+The rest of this doc is for anyone who wants the details, or is picking
+this up to maintain.
+
 ## Why
 
 `claude --resume` reattaches a whole old session — every message, every file
@@ -34,19 +57,6 @@ a pending checkpoint" nudge — everything else is loaded on request.
   read this session (same path, mtime, size, offset/limit), so duplicate
   content doesn't double up in context
 
-## Typical day
-
-```
-/oct-wake             morning — load yesterday's note, not the whole old session
-  ↓
-... work ...          ctx% creeping up, or stepping away?  →  /oct-nap, then /clear
-  ↓
-/oct-wake <keyword>   "didn't I hit this before?" — search notes + long-term memory
-  ↓
-/oct-sleep            end of day — note + memory consolidation in one shot
-                      (weekly, or after a big task: /oct-dream on its own)
-```
-
 ## Install
 
 ```bash
@@ -60,7 +70,7 @@ picks up on its own, no marketplace or install step needed.)
 Then open Claude Code. You'll see one line:
 
 ```
-🐙 oct-toolkit 已安裝。底部狀態列還沒開——輸入 /oct-pulse 一鍵開啟。
+🐙 oct-toolkit installed. The status bar isn't on yet — run /oct-pulse to enable it.
 ```
 
 Type `/oct-pulse`, answer yes, done. That's the whole setup.

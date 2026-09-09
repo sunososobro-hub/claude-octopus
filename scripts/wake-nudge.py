@@ -38,7 +38,7 @@ def checkpoint_nudge():
     if latest_hash == last_woken:
         return None
     date_str = datetime.fromtimestamp(latest.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
-    return f"💾 有未接續的進度檢查點：{latest_hash}（{date_str}）。輸入 /oct-wake 接續，或 /oct-wake --list 看全部。"
+    return f"💾 Unread checkpoint: {latest_hash} ({date_str}). Run /oct-wake to pick it up, or /oct-wake --list to see all."
 
 
 def statusline_wired():
@@ -58,7 +58,7 @@ def pulse_nudge():
         PULSE_NUDGED_FILE.write_text(datetime.now().isoformat())
     except Exception:
         pass
-    return "🐙 oct-toolkit 已安裝。底部狀態列（模型 / ctx% / 5h・7d 額度）還沒開——輸入 /oct-pulse 一鍵開啟。只提醒這一次。"
+    return "🐙 oct-toolkit installed. The status bar (model / ctx% / 5h·7d quota) isn't on yet — run /oct-pulse to enable it. This only shows once."
 
 
 def main():
