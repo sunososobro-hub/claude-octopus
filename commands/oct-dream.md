@@ -83,7 +83,14 @@ empty/resolved.
 4. If a checkpoint's content would still be valuable long-term (a
    decision, a gotcha, a pattern — not just "what I was doing"), also
    fold the relevant bit into the normal `memory/` consolidation below,
-   the same as any other source.
+   the same as any other source. **When a project/ticket group has 2 or
+   more checkpoints just confirmed for archive in this same sweep, don't
+   fold each one separately** — merge them into a single consolidated
+   `memory/` entry telling the project's story across those sessions
+   (what happened, in order, plus any decisions/gotchas), instead of
+   leaving scattered fragments the user has to piece back together.
+   Checkpoints still in progress (not confirmed for archive) are never
+   merged this way — only ones the user just approved archiving.
 
 After the sweep, `/oct-wake` (default view) will naturally show a shorter,
 more current list since archived checkpoints move out of the directory it
