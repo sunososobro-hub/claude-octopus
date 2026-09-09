@@ -1,3 +1,7 @@
+---
+description: 睡覺：收工用，= /oct-nap + /oct-dream 一次做完；多視窗時只在最後關的那個跑
+---
+
 # oct-sleep
 
 End-of-day wrap-up for the **last window** you're closing today: save this
@@ -10,10 +14,10 @@ window's checkpoint, then trigger one global `/oct-dream` pass.
 /oct-sleep --help       # Show help
 ```
 
-## Multi-window scenario — why this is a separate command from `/oct-save`
+## Multi-window scenario — why this is a separate command from `/oct-nap`
 
 If you work across several Claude Code windows in parallel (different
-projects, different tasks), each window should run **`/oct-save`
+projects, different tasks), each window should run **`/oct-nap`
 individually** when you're done with it — that's cheap, because it reads
 that window's own already-warm context.
 
@@ -25,12 +29,12 @@ would just redo the same global consolidation redundantly.
 So the pattern is:
 
 ```
-Window A (done for the day):  /oct-save
-Window B (done for the day):  /oct-save
+Window A (done for the day):  /oct-nap
+Window B (done for the day):  /oct-nap
 Window C (the last one):      /oct-sleep   ← save C + one global /oct-dream
 ```
 
-`/oct-sleep` is exactly `/oct-save` (for the window it's run in) followed
+`/oct-sleep` is exactly `/oct-nap` (for the window it's run in) followed
 by `/oct-dream` (global) — it exists so the *last* window you close can
 do both in one shot, not because it's a shortcut for typing two commands
 in the general case. Don't run it in every window — that defeats the
@@ -46,7 +50,7 @@ window saving itself, using its own warm context, stays the cheap path.
 
 ## What It Does
 
-1. **Save this window** — same as `/oct-save`: write a ~1-2k token
+1. **Save this window** — same as `/oct-nap`: write a ~1-2k token
    checkpoint to `~/.claude/summaries/{hash}.md`.
 2. **Run `/oct-dream`** — global consolidation pass: Checkpoint Sweep
    (archive candidates from `summaries/`) + the usual `memory/`
@@ -56,7 +60,7 @@ window saving itself, using its own warm context, stays the cheap path.
 ## Workflow
 
 ```
-Per window, as you finish with it:  /oct-save
+Per window, as you finish with it:  /oct-nap
 Last window of the day:             /oct-sleep
 Next session, any window:           /oct-wake
 ```
@@ -64,7 +68,7 @@ Next session, any window:           /oct-wake
 ## Tips
 
 - If you only ever run one window at a time, `/oct-sleep` and
-  `/oct-save` + `/oct-dream` back-to-back are equivalent — use whichever
+  `/oct-nap` + `/oct-dream` back-to-back are equivalent — use whichever
   you remember.
 - Don't run `/oct-sleep` in every window of a multi-window day — just the
-  last one you close. The others just need `/oct-save`.
+  last one you close. The others just need `/oct-nap`.

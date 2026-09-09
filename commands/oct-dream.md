@@ -1,10 +1,14 @@
+---
+description: 做夢：整理記憶——合併重複、歸檔做完的便條、抽出反覆出現的模式
+---
+
 # oct-dream
 
 Consolidate and organize memories after a work session.
 
 Like processing experiences during sleep — extract patterns, merge related items, archive completed work.
 
-Also sweeps `~/.claude/summaries/` (the `/oct-save` checkpoints `/oct-wake` reads) —
+Also sweeps `~/.claude/summaries/` (the `/oct-nap` checkpoints `/oct-wake` reads) —
 not just the long-term `memory/` directory — see "Checkpoint Sweep" below.
 
 ## Usage
@@ -51,7 +55,7 @@ Choose: [1-5] or multiple?
 
 ## Checkpoint Sweep
 
-`/oct-save` checkpoints in `~/.claude/summaries/*.md` (excluding the
+`/oct-nap` checkpoints in `~/.claude/summaries/*.md` (excluding the
 `.last_woken` marker) accumulate over time — `/oct-wake` only shows recent
 ones by default, but old ones never actually go away on their own.
 

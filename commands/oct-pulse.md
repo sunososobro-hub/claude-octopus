@@ -1,13 +1,19 @@
-# oct-watch
+---
+description: 脈搏：常駐狀態列（模型/ctx%/5h+7d 額度/會不會在 reset 前燒完）+ 每回合花費；enable/disable 開關
+---
 
-Show per-response token usage after every Claude response (Stop hook).
+# oct-pulse
+
+Live vitals: a persistent status bar (model, ctx%, 5h/7d quota) plus a
+per-response cost line. Run it once with no arguments after installing —
+it checks what's wired, and offers to wire what isn't.
 
 ## Usage
 
 ```bash
-/oct-watch           # Show current status (enabled/disabled)
-/oct-watch enable    # Add Stop hook → show usage after each response
-/oct-watch disable   # Remove Stop hook
+/oct-pulse           # Check both surfaces; offer to wire anything missing
+/oct-pulse enable    # Wire both (status bar + per-response cost line)
+/oct-pulse disable   # Remove both
 ```
 
 ## Output (when enabled)
@@ -30,7 +36,7 @@ Claude Code's own official number by a point or two). Deleted the guess
 table, kept the official one.
 
 When `ctx%` crosses 50% (`_CTX_NUDGE_THRESHOLD`), a nudge appears right
-next to it: `ctx:57%  💡ctx偏高,收工前建議/oct-save`. Reason: prompt
+next to it: `ctx:57%  💡ctx偏高,收工前建議/oct-nap`. Reason: prompt
 cache TTL is ~1h — a large context left idle past that (end of day,
 switching tasks) means whoever resumes it eats a full cold reprocess
 (`cache_write` on everything, not cheap `cache_read`) — exactly what the
@@ -81,42 +87,77 @@ before overwriting it.)
 
 ## How It Works
 
+### Step 0 — Find the script
+
+Everything below needs the absolute path of `usage-analyze.py`. Check in
+order and use the first that exists:
+
+1. `~/.claude/scripts/usage-analyze.py` (manual install)
+2. `~/.claude/skills/*/scripts/usage-analyze.py` (skills-dir plugin clone — the documented install path)
+3. `~/.claude/plugins/*/scripts/usage-analyze.py` (legacy/manual plugins-dir clone, if someone did that anyway)
+4. `find ~/.claude -name usage-analyze.py 2>/dev/null | head -1` (marketplace cache)
+
+Call it `SCRIPT` below. Write it with `~` rather than `/home/<user>` so
+the settings file stays portable.
+
 ### Status check (no args)
 
-Read `~/.claude/settings.json`. Check if `hooks.Stop` contains an entry with `--watch`.
+Two things to check in `~/.claude/settings.json`:
 
-If enabled:
+- **Status bar**: `statusLine.command` contains `usage-analyze.py`.
+- **Per-response line**: either `hooks.Stop` has an entry containing
+  `--watch`, **or** the plugin was installed as a plugin (its
+  `hooks/hooks.json` registers that Stop hook automatically — look for
+  `hooks/hooks.json` next to `SCRIPT`'s parent directory).
+
+Report both, then offer to fix whatever's missing — don't make the user
+type a second command:
+
 ```
-⌚ oct-watch  enabled
-   Stop hook: active — usage shown after each response
-   Disable: /oct-watch disable
+🫀 oct-pulse
+   狀態列（模型/ctx%/額度）：❌ 未接
+   每回合花費：✅ 已接（plugin hook）
+
+要我幫你把狀態列接上嗎？（會寫進 ~/.claude/settings.json 的 statusLine）
 ```
 
-If disabled:
-```
-⌚ oct-watch  disabled
-   Enable: /oct-watch enable
+If both are ✅, say so in one line and stop.
+
+### Enable (or "yes" to the offer above)
+
+**Status bar** — if `statusLine` is absent, set it:
+
+```json
+"statusLine": {
+  "type": "command",
+  "command": "python3 SCRIPT --statusline-hook"
+}
 ```
 
-### Enable
+If a *different* `statusLine` is already there, show it and ask before
+replacing — it's a singleton and might be the user's own.
 
-Read `~/.claude/settings.json`. Add to `hooks.Stop`:
+**Per-response line** — only if not already active via plugin hook, add
+to `hooks.Stop`:
 
 ```json
 {
   "type": "command",
-  "command": "python3 -c \"import sys,json,subprocess,time,os; time.sleep(1); r=subprocess.run(['python3',os.path.expanduser('~/.claude/scripts/usage-analyze.py'),'--watch'],capture_output=True,text=True); print(json.dumps({'systemMessage':r.stdout.strip()}))\""
+  "command": "python3 -c \"import sys,json,subprocess,time,os; time.sleep(1); r=subprocess.run(['python3',os.path.expanduser('SCRIPT'),'--watch'],capture_output=True,text=True); print(json.dumps({'systemMessage':r.stdout.strip()}))\""
 }
 ```
 
 Write back and confirm:
 ```
-✅ oct-watch enabled — usage will appear after each response.
+✅ oct-pulse 已接上。狀態列會在下一次回覆後出現。
 ```
 
 ### Disable
 
-Read `~/.claude/settings.json`. Remove any entry in `hooks.Stop` that contains `--watch`. Write back and confirm:
+Remove the `statusLine` entry only if its command contains
+`usage-analyze.py` (never remove someone else's), and remove any
+`hooks.Stop` entry containing `--watch`. Plugin-registered hooks can't be
+removed here — say so if that's the only one. Confirm:
 ```
-✅ oct-watch disabled.
+✅ oct-pulse 已關閉。
 ```

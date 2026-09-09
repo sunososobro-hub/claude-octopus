@@ -1,11 +1,15 @@
-# oct-save
+---
+description: 小睡：離開或 /clear 前，把「做到哪、發現什麼、接下來幹嘛」寫成 ~1-2k token 的便條到 ~/.claude/summaries/
+---
+
+# oct-nap
 
 Save current session state as a checkpoint before clearing context.
 
 ## Usage
 
 ```bash
-/oct-save              # Save session summary
+/oct-nap              # Save session summary
 ```
 
 ## What It Does
@@ -17,7 +21,7 @@ Creates a lightweight handoff note (~1-2k tokens) that captures:
 - Related memory files
 - Short-term context
 
-Saves to `~/.claude/summaries/{hash}.md` for use with `/oct-recall`.
+Saves to `~/.claude/summaries/{hash}.md` for use with `/oct-wake`.
 
 ## Format
 

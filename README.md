@@ -17,48 +17,77 @@ a pending checkpoint" nudge — everything else is loaded on request.
 
 ## What's in it
 
-- **`/oct-save`** — write a ~1-2k token checkpoint before `/clear`
-- **`/oct-wake`** — load the latest checkpoint (not the whole old session) in one shot
-- **`/oct-recall`** — category-based browsing into curated long-term memory files
+- **`/oct-nap`** — write a ~1-2k token checkpoint before `/clear`
+- **`/oct-wake`** — load the latest checkpoint (not the whole old session) in
+  one shot; `/oct-wake <keyword>` also searches curated long-term memory
 - **`/oct-dream`** / **`/oct-sleep`** — periodic memory consolidation
-- **`/oct-watch`** — per-response token/cost breakdown (Stop hook), plus a
+- **`/oct-pulse`** — per-response token/cost breakdown (Stop hook), plus a
   persistent status-bar line with Anthropic's *official* 5h/7d rate-limit %
   and a reset-vs-ETA comparison so you can tell at a glance whether you'll
   hit the cap before the window resets on its own
+- **`/oct-checkup`** — per-call token/cost table for a session;
+  `/oct-checkup habits` scans the last N days of transcripts for spending
+  patterns (long answer → immediate short question, chatter on a fat
+  context, repeated corrections, fat session ended without a checkpoint)
+  and proposes one-line memory rules — you pick which to save
 - **Read-dedup hook** — blocks a byte-identical re-read of a file already
   read this session (same path, mtime, size, offset/limit), so duplicate
   content doesn't double up in context
 
-## Install
+## Typical day
 
-Clone this repo into your plugins directory:
-
-```bash
-git clone <this-repo> ~/.claude/plugins/oct-toolkit
+```
+/oct-wake             morning — load yesterday's note, not the whole old session
+  ↓
+... work ...          ctx% creeping up, or stepping away?  →  /oct-nap, then /clear
+  ↓
+/oct-wake <keyword>   "didn't I hit this before?" — search notes + long-term memory
+  ↓
+/oct-sleep            end of day — note + memory consolidation in one shot
+                      (weekly, or after a big task: /oct-dream on its own)
 ```
 
-Claude Code should pick up the plugin's commands and hooks (`SessionStart`,
-`PreToolUse[Read]`, `Stop`) automatically. If your Claude Code version
-prefers marketplace-based install instead, add this repo as a marketplace
-source and install `oct-toolkit` from it the same way.
+## Install
 
-**One manual step**: the `--watch` ETA line is most accurate when it can
-read Anthropic's real rate-limit data, which requires a `statusLine` hook.
-Plugins shouldn't silently claim your terminal's status bar (it's a
-singleton setting), so wire this yourself in `~/.claude/settings.json`:
+```bash
+git clone <this-repo> ~/.claude/skills/oct-toolkit
+```
+
+(Not `~/.claude/plugins/` — a bare clone there is never auto-discovered.
+`~/.claude/skills/<name>/.claude-plugin/plugin.json` is what Claude Code
+picks up on its own, no marketplace or install step needed.)
+
+Then open Claude Code. You'll see one line:
+
+```
+🐙 oct-toolkit 已安裝。底部狀態列還沒開——輸入 /oct-pulse 一鍵開啟。
+```
+
+Type `/oct-pulse`, answer yes, done. That's the whole setup.
+
+<details>
+<summary>Why that one step is manual, and what it writes</summary>
+
+Commands and hooks (`SessionStart`, `PreToolUse[Read]`, `Stop`) load
+automatically with the plugin. The bottom status bar is different: it's a
+single `statusLine` setting in `~/.claude/settings.json`, and a plugin
+shouldn't silently take it over — you might already be using it for
+something else. So `/oct-pulse` asks first, then writes:
 
 ```json
 "statusLine": {
   "type": "command",
-  "command": "python3 ~/.claude/plugins/oct-toolkit/scripts/usage-analyze.py --statusline-hook"
+  "command": "python3 ~/.claude/skills/oct-toolkit/scripts/usage-analyze.py --statusline-hook"
 }
 ```
 
-It prints a status line (model, context %, 5h/7d reset+ETA) — Claude Code
-reserves that bottom row whenever any `statusLine` hook is configured at
-all, so there's no point leaving it blank. Without this step, `/oct-watch`
-still works, just with a less accurate self-calibrated estimate instead of
-official numbers.
+Without it, the per-response cost line still works; the 5h/7d quota
+numbers (which come from Anthropic's official `rate_limits`, delivered
+only through the statusLine payload) won't appear.
+
+If your Claude Code prefers marketplace installs, add this repo as a
+marketplace source and install `oct-toolkit` from it — same result.
+</details>
 
 ## Requirements
 

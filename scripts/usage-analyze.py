@@ -4,6 +4,7 @@
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -339,6 +340,7 @@ def _load_rl_state():
 
 def _save_rl_state(state):
     try:
+        _RL_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
         _RL_STATE_FILE.write_text(json.dumps(state))
     except Exception:
         pass
@@ -414,7 +416,7 @@ def statusline_hook():
         elif ctx_pct >= _CTX_NUDGE_THRESHOLD and eta_min is not None and eta_min < _CTX_NUDGE_ETA_MIN:
             nudge = True
         if nudge:
-            ctx_part += "  💡ctx偏高,收工前建議/oct-save"
+            ctx_part += "  💡ctx偏高,收工前建議/oct-nap"
         parts.append(ctx_part)
 
     eta = official_eta_line()
@@ -485,12 +487,21 @@ def _reset_eta_segment(pct, resets_at, hist, now, min_span_min):
     eta_str = _fmt_minutes(eta_min) if eta_min is not None else eta_note
 
     # the comparison itself is the point: does the window empty out before
-    # you'd burn through it at this pace, or the other way around?
+    # you'd burn through it at this pace, or the other way around? Gated on
+    # pct > 60 too — below that, a rate-based projection this far out is too
+    # noisy to be worth flagging.
     verdict = ""
-    if remain_min is not None and eta_min is not None and eta_min < remain_min:
-        verdict = "  ⚠️會先燒完"
+    fired = False
+    if (
+        remain_min is not None
+        and eta_min is not None
+        and eta_min < remain_min
+        and pct > 60
+    ):
+        verdict = "  !"
+        fired = True
 
-    return f"reset:{reset_str} / 可撐:{eta_str}{verdict}"
+    return f"reset:{reset_str} / 可撐:{eta_str}{verdict}", fired
 
 
 def official_eta_line():
@@ -510,6 +521,7 @@ def official_eta_line():
 
     pct = five["used_percentage"]
     line = f"📈 5h視窗:{pct:.0f}%"
+    any_fired = False
 
     seg5 = _reset_eta_segment(
         pct, five.get("resets_at"), state.get("history", []), now,
@@ -518,7 +530,9 @@ def official_eta_line():
     if seg5 is None:
         line += "  (採樣中...)"
     else:
-        line += f"  {seg5}"
+        seg5_text, fired5 = seg5
+        line += f"  {seg5_text}"
+        any_fired = any_fired or fired5
 
     seven = state.get("seven_day")
     if seven and seven.get("used_percentage") is not None:
@@ -529,7 +543,12 @@ def official_eta_line():
             min_span_min=120,
         )
         if seg7 is not None:
-            line += f"  {seg7}"
+            seg7_text, fired7 = seg7
+            line += f"  {seg7_text}"
+            any_fired = any_fired or fired7
+
+    if any_fired:
+        line += "  |  !：代表目前速率開發的話會在reset前燒完token"
 
     return line
 
@@ -575,6 +594,193 @@ def paginate(lines, page_size):
                 break
 
 
+_HABIT_LONG_ANSWER_CHARS = 1200   # an answer this long is "a wall" for follow-up purposes
+_HABIT_LONG_ANSWER_STEPS = 5      # or this many numbered lines — a step-by-step dump
+_HABIT_SHORT_QUESTION_CHARS = 60  # a follow-up this short right after a wall = didn't land
+_HABIT_FAT_CTX_TOKENS = 100_000   # cache_read above this: every "好" costs real money
+_HABIT_TINY_PROMPT_CHARS = 30
+_HABIT_FAT_SESSION_END = 80_000   # session ended this fat without a nap = cold resume later
+_HABIT_MAX_EXAMPLES = 2
+
+_QUESTION_RE = re.compile(r"[?？]|嗎|是不是|什麼意思|哪一?台|哪個|which|what do you mean", re.I)
+_STEP_LINE_RE = re.compile(r"^\s*\d+[\.\)、]\s", re.M)
+_CORRECTION_RE = re.compile(
+    r"^(不要|不用|別|不是|停|不對|錯了|我說過|又來|再說一次|don'?t|stop|no[,，]|wrong|not that)", re.I)
+
+
+def _session_turns(path):
+    """Collapse a transcript into user→assistant turns on the main chain:
+    (user_text, assistant_text, cache_read_of_last_call, turn_cost, ts)."""
+    entries = []
+    seen = set()
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                e = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            uid = e.get("uuid") or e.get("requestId")
+            if uid and uid in seen:
+                continue
+            if uid:
+                seen.add(uid)
+            entries.append(e)
+    entries.sort(key=lambda e: e.get("timestamp", ""))
+
+    turns = []
+    cur = None
+    for e in entries:
+        t = e.get("type")
+        if e.get("isSidechain"):
+            continue
+        if t == "user":
+            content = e.get("message", {}).get("content", "")
+            if isinstance(content, list) and all(
+                isinstance(b, dict) and b.get("type") != "text" for b in content
+            ):
+                continue  # tool_result, not a human message
+            text = get_text(content).strip()
+            if not text or text.startswith("<"):
+                continue
+            if cur:
+                turns.append(cur)
+            cur = {"user": text, "asst": "", "cache_read": 0, "cost": 0.0,
+                   "reread": 0.0, "reread_ctx": 0, "ts": e.get("timestamp", "")}
+        elif t == "assistant" and cur is not None:
+            msg = e.get("message", {})
+            content = msg.get("content", [])
+            if isinstance(content, list):
+                for b in content:
+                    if isinstance(b, dict) and b.get("type") == "text":
+                        cur["asst"] += b.get("text", "")
+            usage = msg.get("usage")
+            if usage:
+                r = {
+                    "model": msg.get("model", ""),
+                    "input": usage.get("input_tokens", 0),
+                    "cache_read": usage.get("cache_read_input_tokens", 0),
+                    "cache_write": usage.get("cache_creation_input_tokens", 0),
+                    "output": usage.get("output_tokens", 0),
+                }
+                cur["cache_read"] = r["cache_read"]
+                if cur["cost"] == 0.0:
+                    # first call of the turn: what it cost just to re-read
+                    # the context before doing anything — the "waste" part,
+                    # as opposed to the work the turn then went on to do.
+                    p = PRICES.get(r["model"], _DEFAULT_PRICE)
+                    ctx = r["input"] + r["cache_read"] + r["cache_write"]
+                    cur["reread"] = (r["cache_read"] * p["cache_read"]
+                                     + r["cache_write"] * p["cache_write"]
+                                     + r["input"] * p["input"]) / 1e6
+                    cur["reread_ctx"] = ctx
+                cur["cost"] += calc_cost(r)
+    if cur:
+        turns.append(cur)
+    return turns
+
+
+def _snip(s, n=90):
+    s = s.replace("\n", " ").strip()
+    return s if len(s) <= n else s[:n - 1] + "…"
+
+
+def habits_report(days=7):
+    """Scan recent transcripts for spending patterns that a one-line memory
+    rule could fix. Pure python — Claude only ever sees this summary."""
+    projects = Path.home() / ".claude" / "projects"
+    cutoff = datetime.now().timestamp() - days * 86400
+    files = [f for f in projects.rglob("*.jsonl") if f.stat().st_mtime >= cutoff]
+
+    summaries = Path.home() / ".claude" / "summaries"
+    nap_times = []
+    if summaries.exists():
+        for f in list(summaries.glob("*.md")) + list((summaries / "archive").glob("*.md")):
+            nap_times.append(f.stat().st_mtime)
+
+    wall_then_q = []     # (cost, sid, ts, follow-up text)
+    fat_chatter = []     # (cost, sid, ts, prompt)
+    corrections = []     # (sid, ts, text)
+    fat_no_nap = []      # (sid, cache_read, end_ts)
+    now = datetime.now().timestamp()
+
+    for f in files:
+        sid = f.stem[:8]
+        turns = _session_turns(f)
+        if not turns:
+            continue
+        for i, t in enumerate(turns):
+            asst = t["asst"]
+            is_wall = (len(asst) >= _HABIT_LONG_ANSWER_CHARS
+                       or len(_STEP_LINE_RE.findall(asst)) >= _HABIT_LONG_ANSWER_STEPS)
+            if is_wall and i + 1 < len(turns):
+                nxt = turns[i + 1]
+                if len(nxt["user"]) <= _HABIT_SHORT_QUESTION_CHARS and _QUESTION_RE.search(nxt["user"]):
+                    wall_then_q.append((nxt["reread"], sid, nxt["ts"], nxt["user"]))
+            if t["reread_ctx"] >= _HABIT_FAT_CTX_TOKENS and len(t["user"]) <= _HABIT_TINY_PROMPT_CHARS:
+                fat_chatter.append((t["reread"], sid, t["ts"], t["user"], t["reread_ctx"]))
+            if _CORRECTION_RE.match(t["user"]):
+                corrections.append((sid, t["ts"], t["user"]))
+
+        last = turns[-1]
+        end = f.stat().st_mtime
+        if last["cache_read"] >= _HABIT_FAT_SESSION_END and now - end > 3600:
+            if not any(abs(nt - end) <= 900 for nt in nap_times):
+                fat_no_nap.append((sid, last["cache_read"], end))
+
+    out = []
+    out.append(f"🩺 oct-checkup habits  |  過去 {days} 天，{len(files)} 個 session\n")
+    fired = 0
+
+    def ex_line(sid, ts, text):
+        return f"      · {sid} {ts[5:16].replace('T', ' ')}  「{_snip(text)}」"
+
+    if wall_then_q:
+        fired += 1
+        cost = sum(c for c, *_ in wall_then_q)
+        out.append(f"1. 長篇回答後馬上回頭問短問題  ×{len(wall_then_q)}  光重讀 context ≈${cost:.2f}")
+        out.append("   Claude 一次倒一大段（或 5 步以上），你看到一半就得問。多問的每一句都要重讀整段對話。")
+        for c, sid, ts, txt in sorted(wall_then_q, reverse=True)[:_HABIT_MAX_EXAMPLES]:
+            out.append(ex_line(sid, ts, txt))
+        out.append("   建議規則：操作型流程一次只給一步、標明對象、等回報再給下一步；長結論寫檔只給路徑。\n")
+
+    if fat_chatter:
+        fired += 1
+        cost = sum(c for c, *_ in fat_chatter)
+        out.append(f"2. 對話很胖時還在短往返  ×{len(fat_chatter)}  光重讀 context ≈${cost:.2f}")
+        out.append(f"   context 超過 {_HABIT_FAT_CTX_TOKENS // 1000}K 之後，連回一句「好」都要付整段重讀的錢。")
+        for c, sid, ts, txt, ctx in sorted(fat_chatter, reverse=True)[:_HABIT_MAX_EXAMPLES]:
+            out.append(ex_line(sid, ts, txt) + f"  ctx {fmt_k(ctx)} → ${c:.2f} 只為了讀這句")
+        out.append("   建議習慣：ctx 過半就 /oct-nap 然後 /clear，用便條接續，不要拖著胖對話。\n")
+
+    if len(corrections) >= 3:
+        fired += 1
+        by_sess = {}
+        for sid, ts, txt in corrections:
+            by_sess.setdefault(sid, []).append((ts, txt))
+        out.append(f"3. 反覆糾正 Claude  ×{len(corrections)}，跨 {len(by_sess)} 個 session")
+        out.append("   同一種糾正說第二次，就代表它該是一條長期記憶，不是一句話。")
+        for sid, ts, txt in corrections[-_HABIT_MAX_EXAMPLES:]:
+            out.append(ex_line(sid, ts, txt))
+        out.append("   建議：把重複出現的那條糾正存成 feedback 記憶（規則 + 為什麼 + 什麼時候套用）。\n")
+
+    if fat_no_nap:
+        fired += 1
+        out.append(f"4. 胖 session 結束時沒寫便條  ×{len(fat_no_nap)}")
+        out.append(f"   結束時 context 還有 {_HABIT_FAT_SESSION_END // 1000}K+，之後若 --resume 就是整段冷重算。")
+        for sid, cr, end in sorted(fat_no_nap, key=lambda x: -x[1])[:_HABIT_MAX_EXAMPLES]:
+            out.append(f"      · {sid}  ctx {fmt_k(cr)}  {datetime.fromtimestamp(end).strftime('%m-%d %H:%M')}")
+        out.append("   建議習慣：收工前 /oct-nap（或 /oct-sleep），下次 /oct-wake 只讀 1-2k 便條。\n")
+
+    if fired == 0:
+        out.append(f"✅ 過去 {days} 天沒看到明顯的浪費模式。")
+    else:
+        out.append("要把哪幾條存成長期記憶？（例：「1 3」/「都要」/「不用」）")
+    print("\n".join(out))
+
+
 def main():
     args = sys.argv[1:]
 
@@ -607,10 +813,16 @@ def main():
     current_flag = False
     watch_flag = False
     reflect_flag = False
+    habits_flag = False
+    habits_days = 7
     since_date = None
     session_id = None
     for a in args:
-        if a.startswith("--last="):
+        if a == "--habits":
+            habits_flag = True
+        elif a.startswith("--days="):
+            habits_days = int(a.split("=")[1])
+        elif a.startswith("--last="):
             last_n = int(a.split("=")[1])
         elif a == "--last":
             last_n = 1
@@ -642,6 +854,10 @@ def main():
             since_date = a.split("=", 1)[1]
         else:
             session_id = a
+
+    if habits_flag:
+        habits_report(days=habits_days)
+        sys.exit(0)
 
     if reflect_flag:
         calls = parse_all_sessions(since_date=since_date)
@@ -741,7 +957,7 @@ def main():
     if buf:
         sys.stdout = buf
 
-    print(f"\n📊 oct-usage  |  {label}\n")
+    print(f"\n📊 oct-checkup  |  {label}\n")
 
     if summary:
         # Aggregated summary table
