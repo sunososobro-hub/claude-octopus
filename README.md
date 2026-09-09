@@ -79,6 +79,29 @@ If the status bar is on (`/oct-pulse`), you don't even need to run the
 command yourself — the context size is already sitting there live, before
 and after.
 
+### Reproduce the table yourself
+
+`scripts/oct-benchmark.sh` is the actual script that generated the table
+above — it's in the repo, not a one-off. It makes real `claude --resume`
+and `claude -p` calls against your own session history (same model pinned
+on both sides so a version mismatch doesn't blow the shared cache and skew
+the result), so running it spends a small amount of real API usage.
+
+```bash
+# one session vs. one checkpoint
+scripts/oct-benchmark.sh <session-id> ~/.claude/summaries/<checkpoint>.md
+
+# auto-pick your largest recent session + latest checkpoint
+scripts/oct-benchmark.sh --auto
+
+# sweep N real sessions spread across your own history's size range,
+# one fixed checkpoint throughout — prints a summary table like the one above
+scripts/oct-benchmark.sh --sweep 8
+```
+
+Pin the model with `OCT_BENCH_MODEL` (default `sonnet`) if you want a
+different one on both sides.
+
 ## What's in it
 
 - **`/oct-nap`** — write a ~1-2k token checkpoint before `/clear`
