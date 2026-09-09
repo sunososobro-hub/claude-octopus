@@ -408,6 +408,7 @@ def statusline_hook():
         ctx_cutoff = now - timedelta(seconds=_CTX_RATE_WINDOW_SECONDS)
         ctx_hist = [[t, p] for t, p in ctx_hist if datetime.fromisoformat(t) >= ctx_cutoff]
         state["ctx_history"] = ctx_hist
+        _save_rl_state(state)  # the save above (before this block) runs before ctx_history is computed
 
         eta_min = _ctx_eta_minutes(ctx_hist, now)
         nudge = False
