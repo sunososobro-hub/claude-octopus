@@ -121,6 +121,36 @@ different one on both sides.
   read this session (same path, mtime, size, offset/limit), so duplicate
   content doesn't double up in context
 
+## Power-user recipe: reopen every unfinished project at once
+
+If you juggle several projects and each has its own `/oct-nap` checkpoint,
+you can skip re-typing `/oct-wake <hash>` in each one by hand. Grab the
+hashes from `/oct-wake --list all`, then a few lines of `tmux` will open one
+window per project, each already `cd`'d in and resuming its checkpoint:
+
+```bash
+#!/usr/bin/env bash
+# wake-all.sh — one tmux window per project, each resuming its checkpoint.
+# Edit this list after checkpoints change (new ones, or /oct-dream archiving old ones).
+PROJECTS=(
+  "project-a|$HOME/code/project-a|a1b2c3d4"
+  "project-b|$HOME/code/project-b|e5f6a7b8"
+)
+
+tmux new-session -d -s wake -n scratch
+for entry in "${PROJECTS[@]}"; do
+  IFS='|' read -r title dir hash <<< "$entry"
+  tmux new-window -t wake -n "$title" "cd '$dir'; claude '/oct-wake $hash'; exec bash"
+done
+tmux kill-window -t wake:scratch
+tmux attach -t wake
+```
+
+Swap `tmux` for `gnome-terminal --tab` / `osascript` (macOS Terminal) /
+your terminal of choice if you'd rather have real windows than tmux panes —
+the pattern is the same either way: one `claude "/oct-wake <hash>"` per
+project, launched from its own directory.
+
 ## Install
 
 ```bash
