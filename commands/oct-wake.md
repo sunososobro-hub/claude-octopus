@@ -46,6 +46,28 @@ directory with every `/` replaced by `-` (e.g. `/home/me/proj` →
 with a description. **Read only the index to list or search; never read
 the individual memory files until the user picks them.**
 
+## Step 0 — Passive entry-fee check
+
+Before anything else, on every invocation (regardless of flags/keyword/no
+args), run:
+
+```bash
+python3 ~/.claude/scripts/usage-analyze.py --entry-fee-check
+```
+
+This is a silent no-op almost every time — it only prints a line when this
+session's fixed entry cost (system prompt + tools + skills, paid on the
+first call of any fresh session) has grown >20% versus the stored
+per-model baseline. First time a model is seen, or a session under
+threshold: no output at all, don't mention it.
+
+If it does print a line, show it as-is, then ask the accept/decline
+question it poses. On yes, run `--entry-fee-accept` and confirm briefly;
+on no or no response, leave the baseline alone (it'll ask again next time —
+that's intentional, it's a fixed anchor, not one that quietly drifts). This
+happens once, inline, before Step 1 — don't let it block or delay loading
+the actual checkpoint/memory the user asked for.
+
 ## Step 1 — Find it
 
 List `~/.claude/summaries/*.md` (exclude `.last_woken` and the `archive/`
@@ -268,13 +290,22 @@ consume.
 ✅ Woke from a1b2c3d4 (2026-08-20 10:45)
 任務: [one-line summary from ## 任務 or ## Task, whichever is present]
 [📅/⚠️ Due line, only if the checkpoint has a ## Due section]
+
+✅ 已完成 N 項（輸入「展開」查看）
+
 下一步:
-- [ ] [each item from ## 下一步 or ## Next Steps, as written — including any already checked [x]]
+- [ ] [each still-open item from ## 下一步 or ## Next Steps, as written]
 ```
 
-Print the whole `## Next Steps` checklist here, not just the first item —
-it's already short by construction, and showing all of it is what makes it
-useful as a todo list across wake/nap cycles instead of a single reminder
-line. Still do not print the full checkpoint content again — Key
+Same collapse rule as the cluster synthesis view in Step 1: show only the
+still-open `[ ]` items by default, and fold every already-checked `[x]`
+item into that one `✅ 已完成 N 項` line instead of printing them — a
+checkpoint that's mostly done is exactly when the checked items turn into
+noise that buries the couple of items still worth acting on. Expand into
+the full `- [x]` list only if the user explicitly asks ("展開", "完成的是
+什麼"). If nothing is checked yet, skip the `✅ 已完成` line entirely and
+just show the open list — don't print "已完成 0 項".
+
+Still do not print the full checkpoint content again — Key
 Findings/Important Context were already read in Step 2's tool output;
 repeating those verbatim wastes output tokens.

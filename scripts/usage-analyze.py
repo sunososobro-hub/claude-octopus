@@ -45,6 +45,13 @@ _CTX_MIN_SPAN_SECONDS = 120         # need 2 min of real spread before trusting 
 _CTX_NUDGE_ETA_MIN = 15             # nudge when projected time-to-100% ctx is under this many minutes
 _CTX_HARD_FLOOR = 85                # nudge regardless of trend once ctx is this high (no time to react)
 
+# "Entry fee" = the fixed system-prompt+tools+skills cost every fresh session
+# pays on its first call, before any real work happens. Grows quietly as
+# skills/MCP servers/CLAUDE.md accumulate; this is a passive per-model
+# fixed-anchor check (not rolling) so accepting a jump is a deliberate act.
+_ENTRY_FEE_FILE = Path.home() / ".claude" / "scripts" / "entry-fee-baseline.json"
+_ENTRY_FEE_ALERT_PCT = 20
+
 def _load_prices():
     prices = dict(_BUILTIN_PRICES)
     if _PRICES_FILE.exists():
@@ -585,6 +592,61 @@ def calc_cost(r):
     )
 
 
+def _entry_fee_now():
+    """Return (model, fee_tokens) for the current session's first call, or
+    (None, None) if the session has no calls yet."""
+    path = find_session()
+    calls = parse_calls(path)
+    if not calls:
+        return None, None
+    first = calls[0]
+    fee = first["input"] + first["cache_write"]
+    return first["model"], fee
+
+
+def _load_entry_fee_baseline():
+    if _ENTRY_FEE_FILE.exists():
+        try:
+            return json.loads(_ENTRY_FEE_FILE.read_text())
+        except Exception:
+            pass
+    return {}
+
+
+def entry_fee_check():
+    """Passive check for /oct-wake: print one line only when this session's
+    entry fee has grown >_ENTRY_FEE_ALERT_PCT vs the stored per-model
+    baseline. Silent on first sighting of a model (baseline just gets set),
+    silent when within threshold. Fixed anchor, not rolling — stays quiet
+    until the user explicitly accepts a new baseline (--entry-fee-accept)."""
+    model, fee = _entry_fee_now()
+    if model is None:
+        return
+    baseline = _load_entry_fee_baseline()
+    base = baseline.get(model)
+    if base is None:
+        baseline[model] = fee
+        _ENTRY_FEE_FILE.write_text(json.dumps(baseline, indent=2))
+        return
+    if base <= 0:
+        return
+    pct = (fee - base) / base * 100
+    if pct >= _ENTRY_FEE_ALERT_PCT:
+        print(f"💡 Entry fee went from {fmt_k(base)} to {fmt_k(fee)} (+{pct:.0f}%) — "
+              f"maybe a new skill/MCP server? Accept as the new baseline? ({model})")
+
+
+def entry_fee_accept():
+    model, fee = _entry_fee_now()
+    if model is None:
+        print("No calls in the current session yet — can't set a baseline")
+        return
+    baseline = _load_entry_fee_baseline()
+    baseline[model] = fee
+    _ENTRY_FEE_FILE.write_text(json.dumps(baseline, indent=2))
+    print(f"✅ Accepted new baseline: {model} = {fmt_k(fee)}")
+
+
 def fmt_k(n):
     return f"{n/1000:.1f}K" if n >= 1000 else str(n)
 
@@ -854,6 +916,14 @@ def main():
 
     if args and args[0] == "--statusline-hook":
         statusline_hook()
+        sys.exit(0)
+
+    if args and args[0] == "--entry-fee-check":
+        entry_fee_check()
+        sys.exit(0)
+
+    if args and args[0] == "--entry-fee-accept":
+        entry_fee_accept()
         sys.exit(0)
 
     # --set-price <model> <input> <output>  (cache rates auto-derived)
