@@ -7,15 +7,20 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 _BUILTIN_PRICES = {
+    "claude-fable-5-1":  {"input": 10.00, "cache_write": 12.50, "cache_read": 0.25, "output": 50.00},
+    "claude-mythos-5-1": {"input": 10.00, "cache_write": 12.50, "cache_read": 0.25, "output": 50.00},  # cache_read unconfirmed for this model specifically — assumed same as Fable 5.1's tier
     "claude-fable-5":    {"input": 10.00, "cache_write": 12.50, "cache_read": 1.00, "output": 50.00},
     "claude-mythos-5":   {"input": 10.00, "cache_write": 12.50, "cache_read": 1.00, "output": 50.00},
+    "claude-opus-5":     {"input":  5.00, "cache_write":  6.25, "cache_read": 0.50, "output": 25.00},
     "claude-opus-4-8":   {"input":  5.00, "cache_write":  6.25, "cache_read": 0.50, "output": 25.00},
     "claude-opus-4-7":   {"input":  5.00, "cache_write":  6.25, "cache_read": 0.50, "output": 25.00},
     "claude-opus-4-6":   {"input":  5.00, "cache_write":  6.25, "cache_read": 0.50, "output": 25.00},
+    "claude-sonnet-5":   {"input":  2.00, "cache_write":  2.50, "cache_read": 0.20, "output": 10.00},
     "claude-sonnet-4-6": {"input":  3.00, "cache_write":  3.75, "cache_read": 0.30, "output": 15.00},
     "claude-haiku-4-5":  {"input":  1.00, "cache_write":  1.25, "cache_read": 0.10, "output":  5.00},
 }
@@ -554,8 +559,23 @@ def official_eta_line():
     return line
 
 
+_MODEL_DATE_SUFFIX_RE = re.compile(r"-\d{8}$")
+
+
+def price_for(model):
+    """Look up per-token prices for a model. Falls back to stripping a
+    trailing dated-snapshot suffix (e.g. -20251001) before giving up to
+    _DEFAULT_PRICE — a dated snapshot bills the same as its base model, but
+    an exact-match-only lookup would silently mis-price it (this is how
+    every Haiku call ended up priced at Sonnet rates before this fix)."""
+    if model in PRICES:
+        return PRICES[model]
+    base = _MODEL_DATE_SUFFIX_RE.sub("", model)
+    return PRICES.get(base, _DEFAULT_PRICE)
+
+
 def calc_cost(r):
-    p = PRICES.get(r.get("model", ""), _DEFAULT_PRICE)
+    p = price_for(r.get("model", ""))
     M = 1_000_000
     return (
         r["input"]       * p["input"]       / M +
@@ -602,6 +622,9 @@ _HABIT_FAT_CTX_TOKENS = 100_000   # cache_read above this: even a one-word reply
 _HABIT_TINY_PROMPT_CHARS = 30
 _HABIT_FAT_SESSION_END = 80_000   # session ended this fat without a nap = cold resume later
 _HABIT_MAX_EXAMPLES = 2
+_HABIT_POST_COMPACT_WINDOW_SEC = 1800  # a correction this soon after auto-compact counts as "right after"
+_HABIT_MIN_POST_COMPACT_CORRECTIONS = 2
+_HABIT_SLOW_SCAN_SEC = 8  # the scan itself took this long — it's supposed to be a cheap local pass
 
 _QUESTION_RE = re.compile(r"[?？]|嗎|是不是|什麼意思|哪一?台|哪個|which|what do you mean", re.I)
 _STEP_LINE_RE = re.compile(r"^\s*\d+[\.\)、]\s", re.M)
@@ -609,11 +632,21 @@ _CORRECTION_RE = re.compile(
     r"^(不要|不用|別|不是|停|不對|錯了|我說過|又來|再說一次|don'?t|stop|no[,，]|wrong|not that)", re.I)
 
 
+def _iso_ts(ts):
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+    except (ValueError, AttributeError):
+        return None
+
+
 def _session_turns(path):
     """Collapse a transcript into user→assistant turns on the main chain:
-    (user_text, assistant_text, cache_read_of_last_call, turn_cost, ts)."""
+    (user_text, assistant_text, cache_read_of_last_call, turn_cost, ts).
+    Also returns sorted timestamps of any auto-compact boundaries — same
+    single file pass, no second read."""
     entries = []
     seen = set()
+    compact_ts = []
     with open(path) as f:
         for line in f:
             line = line.strip()
@@ -623,6 +656,10 @@ def _session_turns(path):
                 e = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if e.get("type") == "system" and e.get("subtype") == "compact_boundary":
+                ts = e.get("timestamp")
+                if ts:
+                    compact_ts.append(ts)
             uid = e.get("uuid") or e.get("requestId")
             if uid and uid in seen:
                 continue
@@ -630,6 +667,7 @@ def _session_turns(path):
                 seen.add(uid)
             entries.append(e)
     entries.sort(key=lambda e: e.get("timestamp", ""))
+    compact_ts.sort()
 
     turns = []
     cur = None
@@ -671,7 +709,7 @@ def _session_turns(path):
                     # first call of the turn: what it cost just to re-read
                     # the context before doing anything — the "waste" part,
                     # as opposed to the work the turn then went on to do.
-                    p = PRICES.get(r["model"], _DEFAULT_PRICE)
+                    p = price_for(r["model"])
                     ctx = r["input"] + r["cache_read"] + r["cache_write"]
                     cur["reread"] = (r["cache_read"] * p["cache_read"]
                                      + r["cache_write"] * p["cache_write"]
@@ -680,7 +718,7 @@ def _session_turns(path):
                 cur["cost"] += calc_cost(r)
     if cur:
         turns.append(cur)
-    return turns
+    return turns, compact_ts
 
 
 def _snip(s, n=90):
@@ -691,6 +729,7 @@ def _snip(s, n=90):
 def habits_report(days=7):
     """Scan recent transcripts for spending patterns that a one-line memory
     rule could fix. Pure python — Claude only ever sees this summary."""
+    _scan_start = time.monotonic()
     projects = Path.home() / ".claude" / "projects"
     cutoff = datetime.now().timestamp() - days * 86400
     files = [f for f in projects.rglob("*.jsonl") if f.stat().st_mtime >= cutoff]
@@ -705,13 +744,15 @@ def habits_report(days=7):
     fat_chatter = []     # (cost, sid, ts, prompt)
     corrections = []     # (sid, ts, text)
     fat_no_nap = []      # (sid, cache_read, end_ts)
+    post_compact_corr = []  # (sid, ts, text, session_compact_count) - correction soon after an auto-compact
     now = datetime.now().timestamp()
 
     for f in files:
         sid = f.stem[:8]
-        turns = _session_turns(f)
+        turns, compact_ts_raw = _session_turns(f)
         if not turns:
             continue
+        compact_ts = [t for t in (_iso_ts(c) for c in compact_ts_raw) if t is not None]
         for i, t in enumerate(turns):
             asst = t["asst"]
             is_wall = (len(asst) >= _HABIT_LONG_ANSWER_CHARS
@@ -724,6 +765,11 @@ def habits_report(days=7):
                 fat_chatter.append((t["reread"], sid, t["ts"], t["user"], t["reread_ctx"]))
             if _CORRECTION_RE.match(t["user"]):
                 corrections.append((sid, t["ts"], t["user"]))
+                t_ts = _iso_ts(t["ts"])
+                if t_ts is not None and compact_ts:
+                    prior = [c for c in compact_ts if c <= t_ts]
+                    if prior and t_ts - max(prior) <= _HABIT_POST_COMPACT_WINDOW_SEC:
+                        post_compact_corr.append((sid, t["ts"], t["user"], len(compact_ts)))
 
         last = turns[-1]
         end = f.stat().st_mtime
@@ -774,6 +820,27 @@ def habits_report(days=7):
         for sid, cr, end in sorted(fat_no_nap, key=lambda x: -x[1])[:_HABIT_MAX_EXAMPLES]:
             out.append(f"      · {sid}  ctx {fmt_k(cr)}  {datetime.fromtimestamp(end).strftime('%m-%d %H:%M')}")
         out.append("   Suggested habit: /oct-nap (or /oct-sleep) before stepping away — next time /oct-wake only reads a 1-2k note.\n")
+
+    if len(post_compact_corr) >= _HABIT_MIN_POST_COMPACT_CORRECTIONS:
+        fired += 1
+        by_sess = {}
+        for sid, ts, txt, ccount in post_compact_corr:
+            by_sess.setdefault(sid, []).append((ts, txt, ccount))
+        out.append(f"5. Corrected again right after an auto-compact  ×{len(post_compact_corr)}, across {len(by_sess)} sessions")
+        out.append("   Shortly after an auto-compact, the same kind of thing had to be corrected again — as if the rule was living in "
+                    "the conversation and got diluted by the compaction instead of actually being retained. (This is a timing "
+                    "coincidence check, not proof the two are related — the more times a session auto-compacted that day, the more "
+                    "likely a coincidental hit is; discount examples from high-compact-count sessions accordingly.)")
+        for sid, ts, txt, ccount in post_compact_corr[-_HABIT_MAX_EXAMPLES:]:
+            out.append(ex_line(sid, ts, txt) + f"  (that session auto-compacted {ccount}x that day)")
+        out.append("   Suggestion: move rules like this into CLAUDE.md (global or that project's own) instead of relying on them surviving compaction inside the conversation.\n")
+
+    scan_secs = time.monotonic() - _scan_start
+    if scan_secs >= _HABIT_SLOW_SCAN_SEC:
+        out.append(f"⏱️ This scan itself took {scan_secs:.1f}s ({len(files)} sessions, last {days} days) — "
+                    "this tool is supposed to be a cheap local pass, so that's slower than it should be.")
+        out.append("   If this keeps happening, please report it: https://github.com/sunososobro-hub/claude-octopus/issues"
+                    " (just this line's numbers is enough — no need to paste any conversation content)\n")
 
     if fired == 0:
         out.append(f"✅ No obvious waste patterns in the last {days} days.")
@@ -872,7 +939,7 @@ def main():
             sys.exit(0)
         r = calls[-1]
         cost = calc_cost(r)
-        p = PRICES.get(r.get("model", ""), _DEFAULT_PRICE)
+        p = price_for(r.get("model", ""))
         M = 1_000_000
         in_c  = fmt_kc(r['input'],       r['input']       * p['input']       / M)
         cr_c  = fmt_kc(r['cache_read'],  r['cache_read']  * p['cache_read']  / M)
@@ -945,7 +1012,7 @@ def main():
     for r in calls:
         for k in total:
             total[k] += r[k]
-        p = PRICES.get(r.get("model", ""), _DEFAULT_PRICE)
+        p = price_for(r.get("model", ""))
         M = 1_000_000
         total_costs["input"]       += r["input"]       * p["input"]       / M
         total_costs["cache_read"]  += r["cache_read"]  * p["cache_read"]  / M
@@ -1015,7 +1082,7 @@ def main():
                 wf = str(r["web_fetch"])  if r["web_fetch"]  else "-"
                 print(f"  {i:>3}  {ts:<19}{sc}  {model_short:<{model_w}}  {fmt_k(r['input']):>6}  {fmt_k(r['cache_read']):>7}  {fmt_k(r['cache_write']):>7}  {fmt_k(r['cache_1h']):>7}  {fmt_k(r['cache_5m']):>7}  {fmt_k(r['output']):>6}  {ws:>2}  {wf:>2}  {r['tier']:<8}  {r['speed']:<8}  ${cost:.4f}")
             else:
-                p = PRICES.get(r.get("model", ""), _DEFAULT_PRICE)
+                p = price_for(r.get("model", ""))
                 M = 1_000_000
                 in_c  = fmt_kc(r['input'],       r['input']       * p['input']       / M)
                 cr_c  = fmt_kc(r['cache_read'],  r['cache_read']  * p['cache_read']  / M)

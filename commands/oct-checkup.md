@@ -39,6 +39,20 @@ per pattern. Patterns it looks for:
 4. **Fat session, no nap** — a session ended with >80K context and no
    checkpoint was written around that time. The next `--resume` is a cold
    re-read.
+5. **Corrected again right after auto-compact** — a correction-keyword
+   message lands within 30 minutes of an auto-compact boundary in the same
+   session. Timing-coincidence check only (not proven causally related) —
+   suggests a rule that was living in the conversation got diluted by
+   compaction instead of actually being retained; the fix is to move that
+   rule into CLAUDE.md (global or project-level) instead of relying on it
+   surviving inside the conversation.
+
+The scan also self-times: if it takes ≥8s (it's supposed to be a cheap
+local pass), it prints a note with just the elapsed seconds and session
+count, and a link to open an issue — no conversation content, and nothing
+is ever sent automatically. Purely a local print, so the tool that's
+supposed to save you tokens doesn't quietly become the thing wasting your
+time.
 
 Run:
 
