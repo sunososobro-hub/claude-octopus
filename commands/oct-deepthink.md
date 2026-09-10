@@ -8,6 +8,10 @@ Don't assume the conclusion we already reached in this conversation is
 right — re-evaluate this decision yourself: first list the objections/
 doubts you'd otherwise have raised, then give your own conclusion.
 
+If several decisions are on the table at once and it's unclear which one
+this is about, use `$ARGUMENTS` as a keyword to point at the right one;
+with no argument, default to whichever was discussed most recently.
+
 ## What this is, and isn't
 
 Three ways to get a better second opinion, trading off cost against how
