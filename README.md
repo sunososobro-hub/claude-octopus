@@ -120,6 +120,13 @@ different one on both sides.
 - **Read-dedup hook** — blocks a byte-identical re-read of a file already
   read this session (same path, mtime, size, offset/limit), so duplicate
   content doesn't double up in context
+- **`/oct-deepthink`** — run right after `/model <higher-tier>` mid-session
+  to get a discount version of a second opinion: keeps full context (no
+  re-explaining), but explicitly tells the new model not to assume the
+  prior conclusion was right. Cheaper than a fresh session with an
+  objective write-up, but weaker — it still sees how the discussion was
+  framed. Use it for a quick sanity check; use a new session for
+  decisions important enough to warrant true independence.
 
 ## Power-user recipe: reopen every unfinished project at once
 
