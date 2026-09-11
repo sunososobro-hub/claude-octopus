@@ -4,9 +4,11 @@ description: Second opinion — dispatch a clean cold sub-agent with a neutral b
 
 # oct-consult
 
-**Will this take 3+ more turns with the bigger model?** Yes → `/model <higher-tier>` then run `/oct-consult --here`. No (the common case) → just run it, Mode A.
+**Default: just run this (Mode A).** Don't do the math on conversation size — a plain switch has to pay for the round trip (there *and* back), and the return trip alone can already cost more than Mode A's entire fixed price, even early in a session (measured numbers in the README).
 
-**Planning to switch back afterward?** Then Mode A almost always wins, even early in a session — a plain switch has to pay for the round trip (there *and* back), and the return trip alone can already cost more than Mode A's entire fixed price (see the README's measured numbers). A plain `/model` switch only comes out ahead when you're *not* coming back — e.g. you're ending the session in the higher tier anyway.
+Only skip it for one of these two reasons:
+- **You're not coming back** — ending the session in the higher tier anyway, so there's no round trip to avoid. Just `/model <higher-tier>` directly.
+- **You need 3+ more turns** with the bigger model (design, distillation, writing a handoff), or the decision leans on context too specific to this conversation to write into a brief. Then `/model <higher-tier>` and run `/oct-consult --here` instead.
 
 `$ARGUMENTS`:
 - empty → Mode A, about whatever decision was discussed most recently
