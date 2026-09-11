@@ -21,6 +21,9 @@ without getting more expensive the longer you use it.
 - **Wondering what you've spent** → the status bar (turned on by
   `/oct-pulse`) shows it live; for a detailed breakdown, or to check
   whether you have any wasteful habits, use `/oct-checkup`.
+- **Not sure the conclusion you just reached is right** → `/oct-consult`:
+  a clean sub-agent decides from a neutral one-page brief instead of you
+  switching model and re-reading your whole history to get a second look.
 
 The rest of this doc is for anyone who wants the details, or is picking
 this up to maintain.
@@ -120,13 +123,14 @@ different one on both sides.
 - **Read-dedup hook** — blocks a byte-identical re-read of a file already
   read this session (same path, mtime, size, offset/limit), so duplicate
   content doesn't double up in context
-- **`/oct-deepthink`** — run right after `/model <higher-tier>` mid-session
-  to get a discount version of a second opinion: keeps full context (no
-  re-explaining), but explicitly tells the new model not to assume the
-  prior conclusion was right. Cheaper than a fresh session with an
-  objective write-up, but weaker — it still sees how the discussion was
-  framed. Use it for a quick sanity check; use a new session for
-  decisions important enough to warrant true independence.
+- **`/oct-consult`** — get a second opinion without paying for it twice
+  over: instead of switching model yourself (which re-reads your whole
+  history and inherits its framing), the resident model writes a one-page
+  neutral brief and hands it to a clean sub-agent to decide. Fixed cost,
+  no anchoring, no clearing your conversation. `--here` is the fallback for
+  when you're about to spend 3+ turns with the bigger model anyway, or the
+  decision leans on context too specific to this conversation to write
+  down — it re-evaluates in place instead, at the cost of some anchoring.
 
 ## Power-user recipe: reopen every unfinished project at once
 
