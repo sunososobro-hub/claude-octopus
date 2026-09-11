@@ -116,35 +116,47 @@ for) your *entire* conversation so far, before it answers anything. The
 longer you'd already been discussing, the bigger that one-time bill.
 
 Real measurements — resuming three of my own real sessions, switching
-model mid-conversation (`claude --model fable --resume <session>`), versus
-asking the same question fresh with only a one-page neutral brief instead
-of the full history (what `/oct-consult`'s default mode automates):
+model mid-conversation (`claude --model fable --resume <session>`) and
+then switching back (`claude --model sonnet --resume <session>`, since
+that's the realistic case: get an opinion, keep working in the model you
+were in), versus asking the same question fresh with only a one-page
+neutral brief instead of the full history (what `/oct-consult`'s default
+mode automates):
 
-| Conversation size before switching | Switching model directly | Cold brief instead | Saved |
-|---|---|---|---|
-| ~12K tokens (early in a session) | $0.28 | $0.18–0.35 | roughly a wash |
-| ~48K tokens (a solid working session) | $0.55 | $0.18–0.35 | 36–67% |
-| ~91K tokens (a full day's session) | $1.13 | $0.18–0.35 | 69–84% |
+| Conversation size before switching | Switch there | Switch back | Round trip | Cold brief instead | Saved |
+|---|---|---|---|---|---|
+| ~12K tokens (early in a session) | $0.28 | $0.08 | $0.36 | $0.18–0.35 | 3–50% |
+| ~48K tokens (a solid working session) | $0.55 | $0.11 | $0.66 | $0.18–0.35 | 47–73% |
+| ~91K tokens (a full day's session) | $1.13 | $0.23 | $1.36 | $0.18–0.35 | 74–87% |
 
 The "cold brief instead" range covers whether the target model's own
 system prompt happens to already be warm in cache from a recent call
 (cheap end) or not (pricier end) — either way it barely moves, because it
 never has to pay for *your* conversation history, only its own fixed
 overhead. That's the whole mechanism: **switching model charges you for
-history, a cold brief doesn't.**
+history, twice if you switch back, and a cold brief doesn't pay it even
+once.**
 
-The flip side, visible in the first row: below roughly 15–20K tokens, a
-plain `/model` switch is already cheap enough that a cold brief's own
-fixed cost hasn't paid for itself yet — just switch directly for a quick
-early-session gut check. The savings only show up once the conversation
-you'd be switching out of has actually gotten long, which in practice is
-exactly when you're most likely to reach for a second opinion.
+The naive intuition — "it's fine, I'll switch back right after, so I'm
+only paying the expensive rate briefly" — is exactly backwards: the return
+trip re-reads the *same* history again, this time at the price of
+whichever model you're returning to. Even the smallest real session tested
+here, ~12K tokens (already past a skill load and a status check, which is
+what a fresh Claude Code session usually looks like before you've said
+anything), came out at a wash-to-slight-win for the cold brief once the
+round trip is counted — the "just switch, it's still early" case turned
+out not to have a clear real-world example where switching actually wins.
+Treat `/oct-consult` as the default the moment you're mid-task, and save a
+plain `/model` switch for when you're *not* coming back — e.g. you're
+ending the session in the new model anyway.
 
 Reproduce this yourself: pick one of your own real sessions with
 `/oct-checkup --sessions`, then compare
-`claude --model fable --resume <session-id> -p "<question>"` against a
+`claude --model fable --resume <session-id> -p "<question>"` followed by
+`claude --model sonnet --resume <session-id> -p "<anything>"` against a
 fresh `claude --model fable -p "<a short neutral brief>\n\n<question>"` —
-`/oct-checkup <session-id> --last=1` after each shows the real billed cost.
+`/oct-checkup <session-id> --last=1` after each shows the real billed
+cost.
 
 ## What's in it
 
