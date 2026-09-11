@@ -6,6 +6,8 @@ description: Second opinion — dispatch a clean cold sub-agent with a neutral b
 
 **Will this take 3+ more turns with the bigger model?** Yes → `/model <higher-tier>` then run `/oct-consult --here`. No (the common case) → just run it, Mode A.
 
+**Conversation still short (early in a session, well under ~20K tokens)?** A plain `/model <higher-tier>` switch is already cheap there — Mode A's fixed cost hasn't paid for itself yet. Mode A's savings show up once the conversation you'd otherwise be dragging along has actually gotten long (see the README's measured numbers).
+
 `$ARGUMENTS`:
 - empty → Mode A, about whatever decision was discussed most recently
 - `<keyword>` → Mode A, about the decision that keyword points to
@@ -44,4 +46,4 @@ Three ways to get a better second opinion, trading off cost against how independ
 
 1. **Just switching model** (`/model opus` without saying anything): the new model sees the entire prior discussion and hasn't been told to question it — easiest to get anchored on whatever framing came before. Cache is model-bound too, so the new model re-reads the whole history — the longer the conversation, the pricier that ticket.
 2. **Mode B (`--here`)**: use right after switching model. **Keeps full memory** but explicitly says not to assume the earlier conclusion was right. This is **independence at a discount** — it still sees how the discussion was framed.
-3. **New session, neutral write-up**: the new model only ever sees the facts you deliberately wrote down — genuine independence, at the cost of writing that summary yourself. **Mode A is the automated version of this tier**: the resident model writes the brief and spawns the cold agent for you, so you don't write anything and don't have to clear the conversation. The sub-agent only reads one page, so the ticket price is fixed and doesn't grow with how long your conversation already is.
+3. **New session, neutral write-up**: the new model only ever sees the facts you deliberately wrote down — genuine independence, at the cost of writing that summary yourself. **Mode A is the automated version of this tier**: the resident model writes the brief and spawns the cold agent for you, so you don't write anything and don't have to clear the conversation. The sub-agent only reads one page, so the ticket price is fixed (measured: roughly $0.18–0.35 depending on whether the target model's system prompt is already warm in cache) and doesn't grow with how long your conversation already is.

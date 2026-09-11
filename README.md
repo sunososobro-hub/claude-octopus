@@ -105,6 +105,47 @@ scripts/oct-benchmark.sh --sweep 8
 Pin the model with `OCT_BENCH_MODEL` (default `sonnet`) if you want a
 different one on both sides.
 
+### Is switching model mid-conversation actually expensive?
+
+It's easy to feel frugal for a bad reason: discuss in a cheap model, only
+switch to a pricier one when you actually need its judgment. That feels
+efficient — you're only "paying the expensive rate" for the moment you
+need it. What that misses: prompt caching is scoped **per model**, so the
+switch itself makes the new model re-read (and pay full cache-write price
+for) your *entire* conversation so far, before it answers anything. The
+longer you'd already been discussing, the bigger that one-time bill.
+
+Real measurements — resuming three of my own real sessions, switching
+model mid-conversation (`claude --model fable --resume <session>`), versus
+asking the same question fresh with only a one-page neutral brief instead
+of the full history (what `/oct-consult`'s default mode automates):
+
+| Conversation size before switching | Switching model directly | Cold brief instead | Saved |
+|---|---|---|---|
+| ~12K tokens (early in a session) | $0.28 | $0.18–0.35 | roughly a wash |
+| ~48K tokens (a solid working session) | $0.55 | $0.18–0.35 | 36–67% |
+| ~91K tokens (a full day's session) | $1.13 | $0.18–0.35 | 69–84% |
+
+The "cold brief instead" range covers whether the target model's own
+system prompt happens to already be warm in cache from a recent call
+(cheap end) or not (pricier end) — either way it barely moves, because it
+never has to pay for *your* conversation history, only its own fixed
+overhead. That's the whole mechanism: **switching model charges you for
+history, a cold brief doesn't.**
+
+The flip side, visible in the first row: below roughly 15–20K tokens, a
+plain `/model` switch is already cheap enough that a cold brief's own
+fixed cost hasn't paid for itself yet — just switch directly for a quick
+early-session gut check. The savings only show up once the conversation
+you'd be switching out of has actually gotten long, which in practice is
+exactly when you're most likely to reach for a second opinion.
+
+Reproduce this yourself: pick one of your own real sessions with
+`/oct-checkup --sessions`, then compare
+`claude --model fable --resume <session-id> -p "<question>"` against a
+fresh `claude --model fable -p "<a short neutral brief>\n\n<question>"` —
+`/oct-checkup <session-id> --last=1` after each shows the real billed cost.
+
 ## What's in it
 
 - **`/oct-nap`** — write a ~1-2k token checkpoint before `/clear`
@@ -211,6 +252,11 @@ marketplace source and install `oct-toolkit` from it — same result.
 - Claude Code ≥2.1.80 for official `rate_limits` (older versions fall back
   automatically)
 - Python 3
+- The bottom status bar (`/oct-pulse`) is a terminal-only concept — it
+  likely won't appear in Claude Desktop, which shares the CLI's underlying
+  engine (so commands and hooks work there) but has no documented
+  `statusLine` surface. The per-response cost line isn't affected either
+  way.
 
 ## License
 
