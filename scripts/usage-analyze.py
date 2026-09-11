@@ -947,7 +947,6 @@ def main():
     sort_cost = False
     show_n = None
     list_sessions_flag = False
-    recall_flag = False
     current_flag = False
     watch_flag = False
     reflect_flag = False
@@ -980,8 +979,6 @@ def main():
             show_n = int(a.split("=")[1])
         elif a == "--sessions":
             list_sessions_flag = True
-        elif a == "--recall":
-            recall_flag = True
         elif a == "--current":
             current_flag = True
         elif a == "--watch":
@@ -1019,10 +1016,6 @@ def main():
         # Model name, ctx%, and 5h/7d reset+runway are NOT repeated here — all
         # already always-visible in the statusLine (see statusline_hook).
         # One surface, one number, per metric.
-        sys.exit(0)
-
-    if recall_flag:
-        list_sessions(sort_by_cost=sort_cost, last_n=last_n if last_n is not None else 10, with_desc=True)
         sys.exit(0)
 
     if list_sessions_flag:

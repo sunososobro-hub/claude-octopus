@@ -131,6 +131,8 @@ different one on both sides.
   when you're about to spend 3+ turns with the bigger model anyway, or the
   decision leans on context too specific to this conversation to write
   down — it re-evaluates in place instead, at the cost of some anchoring.
+  The sub-agent runs on `fable`; if your plan doesn't include it (e.g.
+  Pro/Team), it falls back to `opus` once.
 
 ## Power-user recipe: reopen every unfinished project at once
 
