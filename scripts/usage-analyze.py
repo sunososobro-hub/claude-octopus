@@ -431,9 +431,10 @@ def statusline_hook():
 
 
 _ICON_RANK = {"🔋": 0, "⚡": 1, "🪫": 2}
+_MIN_DEFICIT_MINUTES = 15  # a shortfall smaller than this isn't worth flagging, however bad it looks in %
 
 
-def _margin_icon(pct, margin_frac):
+def _margin_icon(pct, remain_min, eta_min, margin_frac):
     """Per-window severity icon from the schedule margin itself, not a
     separate boolean: 🔋 safe (bar would grow right, or no rate data yet)
     / ⚡ mild (burning ahead of schedule, but within half the balance
@@ -441,8 +442,16 @@ def _margin_icon(pct, margin_frac):
     well before reset). margin_frac's danger side is naturally bounded in
     [-1, 0) (eta_min can't go below 0), so -0.5 is a real halfway point,
     not an arbitrary scale. Gated on pct > 60 — below that, a rate
-    projection this far out is too noisy to act on."""
+    projection this far out is too noisy to act on. Also gated on the
+    *absolute* shortfall (remain_min - eta_min) being at least
+    `_MIN_DEFICIT_MINUTES`: close to a reset, a small window means even a
+    scary-looking % deficit is only a few real minutes of being locked out
+    — e.g. remain 1h vs 可撐 50min is -17% by fraction but only 10 real
+    minutes, not worth a warning. Far from reset, the same fraction is a
+    much bigger absolute gap and still fires normally."""
     if margin_frac is None or margin_frac >= 0 or pct <= 60:
+        return "🔋"
+    if remain_min - eta_min < _MIN_DEFICIT_MINUTES:
         return "🔋"
     return "⚡" if margin_frac >= -0.5 else "🪫"
 
@@ -583,7 +592,7 @@ def _rate_windows(state, now):
         margin_frac = None
         if remain_min is not None and eta_min is not None and remain_min > 1e-9:
             margin_frac = (eta_min - remain_min) / remain_min
-        icon = _margin_icon(pct, margin_frac)
+        icon = _margin_icon(pct, remain_min, eta_min, margin_frac)
         eta_str = _fmt_minutes(eta_min) if eta_min is not None else eta_note
         windows.append({
             "label": label, "pct": pct, "icon": icon, "eta_str": eta_str,

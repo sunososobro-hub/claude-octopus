@@ -54,8 +54,13 @@ unit conversion in the reader's head to see what the icon already knows:
   burning ahead of schedule but by less than half the balance point. 🪫 =
   burning ahead by more than half — heading for empty well before reset.
   Gated on usage > 60% (below that a rate projection this far out is too
-  noisy to act on) — under the gate it's always 🔋 regardless of the raw
-  number.
+  noisy to act on), *and* on the absolute shortfall (reset − 可撐) being
+  at least 15 minutes — close to a reset, a small window means even a
+  scary-looking % deficit is only a few real minutes of lockout (reset in
+  1h, 可撐 50min is −17% by fraction but only 10 real minutes), not worth
+  a warning; far from reset the same fraction is a much bigger absolute
+  gap and still fires normally. Under either gate it's always 🔋
+  regardless of the raw number.
 
   可撐 is actually the *more conservative* (safer-looking) of two signals,
   not one: a **recent-pace** projection (last 20min for 5h, last 48h for
