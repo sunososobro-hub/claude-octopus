@@ -32,6 +32,9 @@ _RATE_WINDOW_SECONDS = 20 * 60  # "current pace" looks at the last 20 min, not t
 _RL_STATE_FILE = Path.home() / ".claude" / "scripts" / "rate-limits-state.json"
 _RL_STALE_SECONDS = 30 * 60  # ignore official data if statusLine hasn't fired in 30 min
 
+_FIVE_HOUR_MIN = 5 * 60       # fixed window length, for the average-pace-since-start signal
+_SEVEN_DAY_MIN = 7 * 24 * 60
+
 # 7d moves ~100x slower than 5h (a whole week vs a whole 5h window), so its
 # history needs a coarser throttle, a much longer retention window, and a
 # much longer minimum span before a rate is trustworthy.
@@ -115,9 +118,9 @@ def list_sessions(sort_by_cost=False, last_n=20, with_desc=False):
         rows.sort(key=lambda x: x[3], reverse=True)
     total = len(rows)
     rows = rows[:last_n]
-    label = f"latest {len(rows)} (of {total})" if total > last_n else f"{len(rows)} sessions"
+    label = f"最新 {len(rows)} 筆（共 {total} 筆）" if total > last_n else f"{len(rows)} sessions"
     if with_desc:
-        print(f"\n{'Session':<12}  {'Date':<10}  {'Calls':>5}  {'Cost':>8}  Description")
+        print(f"\n{'Session':<12}  {'Date':<10}  {'Calls':>5}  {'Cost':>8}  描述")
         print("─" * 80)
         for stem, date, n, cost, desc in rows:
             print(f"{stem:<12}  {date:<10}  {n:>5}  ${cost:.4f}  {desc}")
@@ -400,43 +403,67 @@ def statusline_hook():
 
     # Claude Code reserves the statusLine row whenever one is configured at
     # all — printing nothing still leaves a blank row, it doesn't remove
-    # it. So put something useful there instead of wasting it.
+    # it. So put something useful there instead of wasting it: model name
+    # + per-window icon+duration + ctx% (see _pulse_compact). The fuller
+    # bar view (dashes, │ center marks) lives in `--pulse-detail` — this
+    # row stays numbers-not-bars so it's still a glance, not a read.
     model_name = (data.get("model") or {}).get("display_name", "")
     ctx_pct = (data.get("context_window") or {}).get("used_percentage")
 
-    parts = [model_name] if model_name else []
     if ctx_pct is not None:
-        ctx_part = f"ctx:{ctx_pct:.0f}%"
         # Prompt cache TTL is ~1h. A big context that sits idle past that
         # (end of day, switching tasks) means whoever resumes it eats a
         # full reprocess — cache_write on the entire thing, not a cheap
         # cache_read. Rather than a flat "% above X" trip-wire, track recent
         # growth and project it forward — same "burn rate vs remaining
-        # runway" idea as the 5h/7d runway line below, applied to ctx
-        # instead of quota.
+        # runway" idea as the rate-limit bars, applied to ctx instead of
+        # quota.
         ctx_hist = state.get("ctx_history", [])
         if not ctx_hist or (now - datetime.fromisoformat(ctx_hist[-1][0])) >= timedelta(seconds=30):
             ctx_hist.append([now.isoformat(), ctx_pct])
         ctx_cutoff = now - timedelta(seconds=_CTX_RATE_WINDOW_SECONDS)
         ctx_hist = [[t, p] for t, p in ctx_hist if datetime.fromisoformat(t) >= ctx_cutoff]
         state["ctx_history"] = ctx_hist
-        _save_rl_state(state)  # the save above (before this block) runs before ctx_history is computed
+        _save_rl_state(state)  # the save above (line 387) runs before this block computes ctx_history
 
-        eta_min = _ctx_eta_minutes(ctx_hist, now)
-        nudge = False
-        if ctx_pct >= _CTX_HARD_FLOOR:
-            nudge = True
-        elif ctx_pct >= _CTX_NUDGE_THRESHOLD and eta_min is not None and eta_min < _CTX_NUDGE_ETA_MIN:
-            nudge = True
-        if nudge:
-            ctx_part += "  💡ctx high, consider /oct-nap before stepping away"
-        parts.append(ctx_part)
+    compact = _pulse_compact(state, now)
+    print(f"{model_name}  {compact}" if model_name and compact else (compact or model_name))
 
-    eta = official_eta_line()
-    if eta:
-        parts.append(eta.replace("📈 ", ""))
 
-    print("  ".join(parts))
+_ICON_RANK = {"🔋": 0, "⚡": 1, "🪫": 2}
+
+
+def _margin_icon(pct, margin_frac):
+    """Per-window severity icon from the schedule margin itself, not a
+    separate boolean: 🔋 safe (bar would grow right, or no rate data yet)
+    / ⚡ mild (burning ahead of schedule, but within half the balance
+    point) / 🪫 severe (past half the balance point — heading for empty
+    well before reset). margin_frac's danger side is naturally bounded in
+    [-1, 0) (eta_min can't go below 0), so -0.5 is a real halfway point,
+    not an arbitrary scale. Gated on pct > 60 — below that, a rate
+    projection this far out is too noisy to act on."""
+    if margin_frac is None or margin_frac >= 0 or pct <= 60:
+        return "🔋"
+    return "⚡" if margin_frac >= -0.5 else "🪫"
+
+
+def _battery(eta_str, margin_frac, icon, half_width=2):
+    """Center-anchored bar: how far ahead of or behind schedule the current
+    burn rate is — the number that matters (可撐, projected time-to-100%)
+    lives right at the bar's tip instead of trailing after it as separate
+    text, and the tip itself is the battery-style severity icon instead of
+    a plain arrow. margin_frac > 0 means the quota would last longer than
+    the time left (safe, grows right); < 0 means it would run out before
+    the window resets (grows left toward empty). None (no rate data yet)
+    renders as a flat center line with whatever note explains the gap —
+    there's nothing to report yet, not "on schedule"."""
+    if margin_frac is None:
+        return "│" + (f" {eta_str}" if eta_str else "")
+    n = round(min(1.0, abs(margin_frac)) * half_width)
+    dashes = "─" * n
+    if margin_frac >= 0:
+        return f"│{dashes}{eta_str}{icon}"
+    return f"{icon}{eta_str}{dashes}│"
 
 
 def _fmt_minutes(m):
@@ -463,11 +490,34 @@ def _ctx_eta_minutes(hist, now):
     return (100 - p1) / rate
 
 
-def _reset_eta_segment(pct, resets_at, hist, now, min_span_min):
-    """reset:X / runway:Y for one rate-limit window (5h or 7d) — "runway"
-    (how much longer you can keep going at the current pace before hitting
-    the cap), not a generic ETA. Returns None when there's neither a reset
-    time nor enough history to say anything."""
+def _avg_pace_eta_min(pct, remain_min, window_total_min):
+    """Projected minutes-to-100%-used from the plain average pace since
+    this window started (pct ÷ elapsed time) — no sampling/history
+    needed, available from the first minute of a window. This smooths out
+    exactly what a short recent-rate lookback overreacts to: a busy
+    morning, a quiet weekend, any human non-uniform pacing — a brief
+    burst doesn't move this number much because it's averaged over the
+    whole window-so-far, not just the last few minutes. None if the
+    window just started (elapsed too small for the ratio to mean
+    anything) or pct is 0 (nothing to divide by yet)."""
+    if remain_min is None or pct <= 0:
+        return None
+    elapsed_min = window_total_min - remain_min
+    if elapsed_min < 1:
+        return None
+    avg_rate = pct / elapsed_min
+    if avg_rate <= 1e-9:
+        return None
+    return (100 - pct) / avg_rate
+
+
+def _reset_eta_raw(pct, resets_at, hist, now, min_span_min):
+    """Raw numbers behind the reset/可撐 comparison for one rate-limit
+    window: (remain_min, eta_min, eta_note). `eta_min` is the projected
+    minutes-to-100%-used at the current *recent* pace (last 20min for 5h,
+    last 48h for 7d) — None if there's not enough history yet (`eta_note`
+    explains why). See `_avg_pace_eta_min` for the complementary
+    whole-window-average signal; `_rate_windows` combines both."""
     remain_min = None
     if resets_at:
         reset_dt = datetime.fromtimestamp(resets_at, tz=timezone.utc)
@@ -476,7 +526,7 @@ def _reset_eta_segment(pct, resets_at, hist, now, min_span_min):
             remain_min = m
 
     eta_min = None
-    eta_note = "sampling"
+    eta_note = "⏳"  # just started sampling, nothing else worth saying yet
     if len(hist) >= 2:
         t0, p0 = hist[0]
         span_min = (now - datetime.fromisoformat(t0)).total_seconds() / 60
@@ -485,85 +535,153 @@ def _reset_eta_segment(pct, resets_at, hist, now, min_span_min):
         # require real spread before trusting the rate.
         if span_min < min_span_min:
             wait_min = min_span_min - span_min
-            eta_note = f"sampling, {_fmt_minutes(wait_min)} more needed"
+            eta_note = f"⏳{_fmt_minutes(wait_min)}"
         else:
             rate = (pct - p0) / span_min
             if rate <= 1e-6:
-                eta_note = "usage flat"
+                eta_note = "∞"  # flat usage — at this (non-)rate it never hits 100%
             else:
                 eta_min = (100 - pct) / rate
 
-    if remain_min is None and eta_min is None:
-        return None
-
-    reset_str = _fmt_minutes(remain_min) if remain_min is not None else "?"
-    eta_str = _fmt_minutes(eta_min) if eta_min is not None else eta_note
-
-    # the comparison itself is the point: does the window empty out before
-    # you'd burn through it at this pace, or the other way around? Gated on
-    # pct > 60 too — below that, a rate-based projection this far out is too
-    # noisy to be worth flagging.
-    verdict = ""
-    fired = False
-    if (
-        remain_min is not None
-        and eta_min is not None
-        and eta_min < remain_min
-        and pct > 60
-    ):
-        verdict = "  !"
-        fired = True
-
-    return f"reset:{reset_str} / runway:{eta_str}{verdict}", fired
+    return remain_min, eta_min, eta_note
 
 
-def official_eta_line():
-    """Prefer Anthropic's real rate_limits (captured via the statusLine
-    hook) over the self-calibrated estimate. Returns None if no fresh
-    official data is available, so the caller can fall back."""
-    state = _load_rl_state()
+def _rate_windows(state, now):
+    """Per-window (5h, then 7d if present) computed fields as a list of
+    dicts: label, pct, icon, eta_str, remain_str, bar. Empty list if
+    there's no fresh official data (never seen, or statusLine hasn't
+    fired in 30 min). Shared by the compact statusLine and --pulse-detail
+    so both read off the same numbers instead of two slightly different
+    derivations."""
     updated_at = state.get("updated_at")
     if not updated_at:
-        return None
-    now = datetime.now(timezone.utc)
+        return []
     if now - datetime.fromisoformat(updated_at) > timedelta(seconds=_RL_STALE_SECONDS):
-        return None
+        return []
     five = state.get("five_hour")
     if not five or five.get("used_percentage") is None:
-        return None
+        return []
 
-    pct = five["used_percentage"]
-    line = f"📈 5h window:{pct:.0f}%"
-    any_fired = False
+    windows = []
 
-    seg5 = _reset_eta_segment(
-        pct, five.get("resets_at"), state.get("history", []), now,
-        min_span_min=3,
-    )
-    if seg5 is None:
-        line += "  (sampling...)"
-    else:
-        seg5_text, fired5 = seg5
-        line += f"  {seg5_text}"
-        any_fired = any_fired or fired5
+    def add_window(label, pct, resets_at, hist, min_span_min, window_total_min):
+        remain_min, eta_recent_min, eta_note = _reset_eta_raw(
+            pct, resets_at, hist, now, min_span_min
+        )
+        eta_avg_min = _avg_pace_eta_min(pct, remain_min, window_total_min)
+        # Only escalate when the recent burst *and* the whole-window average
+        # both agree it's a problem — max(), not min(): a brief fast patch
+        # that the average absorbs stays 🔋, and a slow patch that the
+        # average still finds worrying doesn't get waved off just because
+        # this exact moment happens to be calm. Either signal alone was too
+        # noisy in one direction or the other.
+        if eta_recent_min is not None and eta_avg_min is not None:
+            eta_min = max(eta_recent_min, eta_avg_min)
+        else:
+            eta_min = eta_recent_min if eta_recent_min is not None else eta_avg_min
+
+        margin_frac = None
+        if remain_min is not None and eta_min is not None and remain_min > 1e-9:
+            margin_frac = (eta_min - remain_min) / remain_min
+        icon = _margin_icon(pct, margin_frac)
+        eta_str = _fmt_minutes(eta_min) if eta_min is not None else eta_note
+        windows.append({
+            "label": label, "pct": pct, "icon": icon, "eta_str": eta_str,
+            "remain_str": _fmt_minutes(remain_min) if remain_min is not None else "?",
+            "bar": _battery(eta_str, margin_frac, icon),
+        })
+
+    add_window("5h", five["used_percentage"], five.get("resets_at"), state.get("history", []), min_span_min=3, window_total_min=_FIVE_HOUR_MIN)
 
     seven = state.get("seven_day")
     if seven and seven.get("used_percentage") is not None:
-        pct7 = seven["used_percentage"]
-        line += f"  |  7d:{pct7:.0f}%"
-        seg7 = _reset_eta_segment(
-            pct7, seven.get("resets_at"), state.get("history_7d", []), now,
-            min_span_min=120,
-        )
-        if seg7 is not None:
-            seg7_text, fired7 = seg7
-            line += f"  {seg7_text}"
-            any_fired = any_fired or fired7
+        add_window("7d", seven["used_percentage"], seven.get("resets_at"), state.get("history_7d", []), min_span_min=120, window_total_min=_SEVEN_DAY_MIN)
 
-    if any_fired:
-        line += "  |  !: at this pace you'll burn through the quota before it resets"
+    return windows
 
-    return line
+
+def _ctx_nudge(state, now):
+    """Whether ctx is high enough (or growing fast enough) to warrant a
+    /oct-nap suggestion before this session pauses. Reads `state` only —
+    no side effects — so both the statusLine hook and --pulse-detail can
+    call it without re-deriving ctx_history. Returns (nudge, ctx_pct);
+    ctx_pct is None if there's no ctx_history yet."""
+    ctx_hist = state.get("ctx_history", [])
+    if not ctx_hist:
+        return False, None
+    ctx_pct = ctx_hist[-1][1]
+    eta_min = _ctx_eta_minutes(ctx_hist, now)
+    if ctx_pct >= _CTX_HARD_FLOOR:
+        return True, ctx_pct
+    if ctx_pct >= _CTX_NUDGE_THRESHOLD and eta_min is not None and eta_min < _CTX_NUDGE_ETA_MIN:
+        return True, ctx_pct
+    return False, ctx_pct
+
+
+def _pulse_compact(state, now):
+    """The persistent statusLine content: each rate-limit window's own
+    icon between the two numbers that are actually being compared — time
+    left until reset, and 可撐 (projected time-to-100%-used at the
+    current pace) — both in the same unit on purpose. A pct next to a
+    duration forces a unit conversion in the reader's head; two durations
+    don't, and time-vs-time *is* the comparison the icon itself already
+    encodes (see _margin_icon), so showing it in the same unit makes the
+    icon's verdict checkable at a glance instead of taken on faith. Real
+    pct%, for whoever wants the never-wrong official number as a separate
+    sanity check, lives in --pulse-detail. Plus ctx as a number that's
+    always shown, not only once it's high enough to matter. No
+    bars/dashes here — those live in --pulse-detail; this is the compact
+    middle ground between "just an icon" (not enough to act on) and the
+    full bar view (more than a glance needs)."""
+    windows = _rate_windows(state, now)
+    rate_part = "  ".join(f"{w['label']} {w['remain_str']}{w['icon']}{w['eta_str']}" for w in windows)
+
+    ctx_nudge, ctx_pct = _ctx_nudge(state, now)
+    ctx_part = f"🧠{ctx_pct:.0f}%{'💡' if ctx_nudge else ''}" if ctx_pct is not None else ""
+
+    return "  ".join(p for p in (rate_part, ctx_part) if p)
+
+
+def _worst_rate_icon(windows):
+    """Worst-of-both-windows severity icon (🪫 > ⚡ > 🔋), or 🔋 when
+    there's nothing to report yet (no windows at all)."""
+    if not windows:
+        return "🔋"
+    return max((w["icon"] for w in windows), key=lambda i: _ICON_RANK[i])
+
+
+def pulse_detail():
+    """The full bar view, for `/oct-pulse` re-run while already enabled —
+    same numbers as the compact statusLine, expanded into the
+    center-anchored margin bars (see _battery) instead of just icon +
+    duration."""
+    state = _load_rl_state()
+    updated_at = state.get("updated_at")
+    if not updated_at:
+        print("還沒有資料，先讓 statusLine 刷新過一次（隨便切一下視窗）再重跑。")
+        return
+    now = datetime.now(timezone.utc)
+    if now - datetime.fromisoformat(updated_at) > timedelta(seconds=_RL_STALE_SECONDS):
+        print("資料太舊了（statusLine 超過 30 分鐘沒刷新），先切一下視窗讓它刷新再重跑。")
+        return
+
+    windows = _rate_windows(state, now)
+    rate_icon = _worst_rate_icon(windows)
+    ctx_nudge, ctx_pct = _ctx_nudge(state, now)
+
+    verdict = {
+        "🪫": "有窗口燒得比排程快很多，得馬上放慢速度",
+        "⚡": "有窗口燒得比排程快，留意一下速度",
+        "🔋": "額度都在排程內",
+    }[rate_icon]
+    if ctx_nudge:
+        verdict += "；ctx 偏高，收工前建議 /oct-nap"
+
+    print(f"{rate_icon}{'💡' if ctx_nudge else ''} {verdict}")
+    if ctx_pct is not None:
+        print(f"ctx:{ctx_pct:.0f}%")
+    if windows:
+        print("  ".join(f"{w['label']} {w['pct']:.0f}%{w['bar']}" for w in windows))
 
 
 _MODEL_DATE_SUFFIX_RE = re.compile(r"-\d{8}$")
@@ -604,6 +722,22 @@ def _entry_fee_now():
     return first["model"], fee
 
 
+def _current_account_id():
+    """Best-effort id for the logged-in Claude account (org first, then
+    account), so baselines don't get compared across different
+    accounts/orgs sharing this machine — switching accounts changes which
+    connectors/policies are attached and the entry fee legitimately differs."""
+    try:
+        oauth = json.loads((Path.home() / ".claude.json").read_text()).get("oauthAccount", {})
+        return oauth.get("organizationUuid") or oauth.get("accountUuid") or "unknown"
+    except Exception:
+        return "unknown"
+
+
+def _entry_fee_key(model):
+    return f"{_current_account_id()}:{model}"
+
+
 def _load_entry_fee_baseline():
     if _ENTRY_FEE_FILE.exists():
         try:
@@ -622,29 +756,30 @@ def entry_fee_check():
     model, fee = _entry_fee_now()
     if model is None:
         return
+    key = _entry_fee_key(model)
     baseline = _load_entry_fee_baseline()
-    base = baseline.get(model)
+    base = baseline.get(key)
     if base is None:
-        baseline[model] = fee
+        baseline[key] = fee
         _ENTRY_FEE_FILE.write_text(json.dumps(baseline, indent=2))
         return
     if base <= 0:
         return
     pct = (fee - base) / base * 100
     if pct >= _ENTRY_FEE_ALERT_PCT:
-        print(f"💡 Entry fee went from {fmt_k(base)} to {fmt_k(fee)} (+{pct:.0f}%) — "
-              f"maybe a new skill/MCP server? Accept as the new baseline? ({model})")
+        print(f"💡 入場費從 {fmt_k(base)} 漲到 {fmt_k(fee)}（+{pct:.0f}%），"
+              f"可能是新裝了 skill/MCP，要接受新基準嗎？（{model}）")
 
 
 def entry_fee_accept():
     model, fee = _entry_fee_now()
     if model is None:
-        print("No calls in the current session yet — can't set a baseline")
+        print("目前 session 還沒有任何呼叫，無法設定基準")
         return
     baseline = _load_entry_fee_baseline()
-    baseline[model] = fee
+    baseline[_entry_fee_key(model)] = fee
     _ENTRY_FEE_FILE.write_text(json.dumps(baseline, indent=2))
-    print(f"✅ Accepted new baseline: {model} = {fmt_k(fee)}")
+    print(f"✅ 已接受新基準：{model} = {fmt_k(fee)}")
 
 
 def fmt_k(n):
@@ -669,7 +804,7 @@ def paginate(lines, page_size):
         print(line)
         if (i + 1) % page_size == 0 and i + 1 < total:
             try:
-                ans = input(f"\n── {i+1}/{total} ── Enter to continue / q to quit: ")
+                ans = input(f"\n── {i+1}/{total} 筆 ── Enter 繼續 / q 離開: ")
                 if ans.strip().lower() == "q":
                     break
             except (EOFError, KeyboardInterrupt):
@@ -680,7 +815,7 @@ def paginate(lines, page_size):
 _HABIT_LONG_ANSWER_CHARS = 1200   # an answer this long is "a wall" for follow-up purposes
 _HABIT_LONG_ANSWER_STEPS = 5      # or this many numbered lines — a step-by-step dump
 _HABIT_SHORT_QUESTION_CHARS = 60  # a follow-up this short right after a wall = didn't land
-_HABIT_FAT_CTX_TOKENS = 100_000   # cache_read above this: even a one-word reply costs real money
+_HABIT_FAT_CTX_TOKENS = 100_000   # cache_read above this: every "好" costs real money
 _HABIT_TINY_PROMPT_CHARS = 30
 _HABIT_FAT_SESSION_END = 80_000   # session ended this fat without a nap = cold resume later
 _HABIT_MAX_EXAMPLES = 2
@@ -840,74 +975,73 @@ def habits_report(days=7):
                 fat_no_nap.append((sid, last["cache_read"], end))
 
     out = []
-    out.append(f"🩺 oct-checkup habits  |  last {days} days, {len(files)} sessions\n")
+    out.append(f"🩺 oct-checkup habits  |  過去 {days} 天，{len(files)} 個 session\n")
     fired = 0
 
     def ex_line(sid, ts, text):
-        return f"      · {sid} {ts[5:16].replace('T', ' ')}  \"{_snip(text)}\""
+        return f"      · {sid} {ts[5:16].replace('T', ' ')}  「{_snip(text)}」"
 
     if wall_then_q:
         fired += 1
         cost = sum(c for c, *_ in wall_then_q)
-        out.append(f"1. Long answer, immediate short follow-up question  ×{len(wall_then_q)}  re-read cost alone ≈${cost:.2f}")
-        out.append("   Claude dumps a wall of text (or 5+ steps) in one go, and you have to ask a question halfway through. Every follow-up re-reads the whole conversation.")
+        out.append(f"1. 長篇回答後馬上回頭問短問題  ×{len(wall_then_q)}  光重讀 context ≈${cost:.2f}")
+        out.append("   Claude 一次倒一大段（或 5 步以上），你看到一半就得問。多問的每一句都要重讀整段對話。")
         for c, sid, ts, txt in sorted(wall_then_q, reverse=True)[:_HABIT_MAX_EXAMPLES]:
             out.append(ex_line(sid, ts, txt))
-        out.append("   Suggested rule: give operational steps one at a time, name the target, wait for a report before the next step; write long conclusions to a file and share only the path.\n")
+        out.append("   建議規則：操作型流程一次只給一步、標明對象、等回報再給下一步；長結論寫檔只給路徑。\n")
 
     if fat_chatter:
         fired += 1
         cost = sum(c for c, *_ in fat_chatter)
-        out.append(f"2. Short back-and-forth on an already-fat context  ×{len(fat_chatter)}  re-read cost alone ≈${cost:.2f}")
-        out.append(f"   Once context passes {_HABIT_FAT_CTX_TOKENS // 1000}K, even a one-word reply costs a full re-read.")
+        out.append(f"2. 對話很胖時還在短往返  ×{len(fat_chatter)}  光重讀 context ≈${cost:.2f}")
+        out.append(f"   context 超過 {_HABIT_FAT_CTX_TOKENS // 1000}K 之後，連回一句「好」都要付整段重讀的錢。")
         for c, sid, ts, txt, ctx in sorted(fat_chatter, reverse=True)[:_HABIT_MAX_EXAMPLES]:
-            out.append(ex_line(sid, ts, txt) + f"  ctx {fmt_k(ctx)} → ${c:.2f} just to read this line")
-        out.append("   Suggested habit: once ctx passes half, /oct-nap then /clear — pick up with the note instead of dragging a fat conversation along.\n")
+            out.append(ex_line(sid, ts, txt) + f"  ctx {fmt_k(ctx)} → ${c:.2f} 只為了讀這句")
+        out.append("   建議習慣：ctx 過半就 /oct-nap 然後 /clear，用便條接續，不要拖著胖對話。\n")
 
     if len(corrections) >= 3:
         fired += 1
         by_sess = {}
         for sid, ts, txt in corrections:
             by_sess.setdefault(sid, []).append((ts, txt))
-        out.append(f"3. Repeated corrections to Claude  ×{len(corrections)}, across {len(by_sess)} sessions")
-        out.append("   The same correction said a second time means it belongs in long-term memory, not a one-off message.")
+        out.append(f"3. 反覆糾正 Claude  ×{len(corrections)}，跨 {len(by_sess)} 個 session")
+        out.append("   同一種糾正說第二次，就代表它該是一條長期記憶，不是一句話。")
         for sid, ts, txt in corrections[-_HABIT_MAX_EXAMPLES:]:
             out.append(ex_line(sid, ts, txt))
-        out.append("   Suggestion: turn the recurring correction into a feedback memory (rule + why + when it applies).\n")
+        out.append("   建議：把重複出現的那條糾正存成 feedback 記憶（規則 + 為什麼 + 什麼時候套用）。\n")
 
     if fat_no_nap:
         fired += 1
-        out.append(f"4. Fat session ended without a checkpoint  ×{len(fat_no_nap)}")
-        out.append(f"   Context was still {_HABIT_FAT_SESSION_END // 1000}K+ at the end — a later --resume means a full cold re-read.")
+        out.append(f"4. 胖 session 結束時沒寫便條  ×{len(fat_no_nap)}")
+        out.append(f"   結束時 context 還有 {_HABIT_FAT_SESSION_END // 1000}K+，之後若 --resume 就是整段冷重算。")
         for sid, cr, end in sorted(fat_no_nap, key=lambda x: -x[1])[:_HABIT_MAX_EXAMPLES]:
             out.append(f"      · {sid}  ctx {fmt_k(cr)}  {datetime.fromtimestamp(end).strftime('%m-%d %H:%M')}")
-        out.append("   Suggested habit: /oct-nap (or /oct-sleep) before stepping away — next time /oct-wake only reads a 1-2k note.\n")
+        out.append("   建議習慣：收工前 /oct-nap（或 /oct-sleep），下次 /oct-wake 只讀 1-2k 便條。\n")
 
     if len(post_compact_corr) >= _HABIT_MIN_POST_COMPACT_CORRECTIONS:
         fired += 1
         by_sess = {}
         for sid, ts, txt, ccount in post_compact_corr:
             by_sess.setdefault(sid, []).append((ts, txt, ccount))
-        out.append(f"5. Corrected again right after an auto-compact  ×{len(post_compact_corr)}, across {len(by_sess)} sessions")
-        out.append("   Shortly after an auto-compact, the same kind of thing had to be corrected again — as if the rule was living in "
-                    "the conversation and got diluted by the compaction instead of actually being retained. (This is a timing "
-                    "coincidence check, not proof the two are related — the more times a session auto-compacted that day, the more "
-                    "likely a coincidental hit is; discount examples from high-compact-count sessions accordingly.)")
+        out.append(f"5. 壓縮後又被糾正一次  ×{len(post_compact_corr)}，跨 {len(by_sess)} 個 session")
+        out.append("   auto-compact 剛發生沒多久，就得再糾正一次同類的事——像是規則活在對話裡，"
+                    "壓縮一過就被沖淡，不是真的記住了。（這是時間上的巧合偵測，不保證兩者內容相關；"
+                    "session 當天 compact 次數越多，巧合撞進來的機率也越高，自己看一下例子、compact 次數偏高的可以多打折扣。）")
         for sid, ts, txt, ccount in post_compact_corr[-_HABIT_MAX_EXAMPLES:]:
-            out.append(ex_line(sid, ts, txt) + f"  (that session auto-compacted {ccount}x that day)")
-        out.append("   Suggestion: move rules like this into CLAUDE.md (global or that project's own) instead of relying on them surviving compaction inside the conversation.\n")
+            out.append(ex_line(sid, ts, txt) + f"  （該 session 當天 compact {ccount} 次）")
+        out.append("   建議：這類規則搬進 CLAUDE.md（全域或該專案自己的），不要只留在對話裡靠它撐過壓縮。\n")
 
     scan_secs = time.monotonic() - _scan_start
     if scan_secs >= _HABIT_SLOW_SCAN_SEC:
-        out.append(f"⏱️ This scan itself took {scan_secs:.1f}s ({len(files)} sessions, last {days} days) — "
-                    "this tool is supposed to be a cheap local pass, so that's slower than it should be.")
-        out.append("   If this keeps happening, please report it: https://github.com/sunososobro-hub/claude-octopus/issues"
-                    " (just this line's numbers is enough — no need to paste any conversation content)\n")
+        out.append(f"⏱️ 這次掃描本身花了 {scan_secs:.1f}s（{len(files)} 個 session，{days} 天份）"
+                    "——這支工具應該只是輕量本機掃描，這樣偏慢。")
+        out.append("   如果常態如此，歡迎回報：https://github.com/sunososobro-hub/claude-octopus/issues"
+                    "（附上這行數字就好，不用附任何對話內容）\n")
 
     if fired == 0:
-        out.append(f"✅ No obvious waste patterns in the last {days} days.")
+        out.append(f"✅ 過去 {days} 天沒看到明顯的浪費模式。")
     else:
-        out.append("Which of these should be saved as long-term memory? (e.g. \"1 3\" / \"all of them\" / \"none\")")
+        out.append("要把哪幾條存成長期記憶？（例：「1 3」/「都要」/「不用」）")
     print("\n".join(out))
 
 
@@ -916,6 +1050,10 @@ def main():
 
     if args and args[0] == "--statusline-hook":
         statusline_hook()
+        sys.exit(0)
+
+    if args and args[0] == "--pulse-detail":
+        pulse_detail()
         sys.exit(0)
 
     if args and args[0] == "--entry-fee-check":
@@ -1013,7 +1151,7 @@ def main():
         cw_c  = fmt_kc(r['cache_write'], r['cache_write'] * p['cache_write'] / M)
         out_c = fmt_kc(r['output'],      r['output']      * p['output']      / M)
         print(f"💰 In:{in_c}  CR:{cr_c}  CW:{cw_c}  Out:{out_c}  =${cost:.4f}")
-        # Model name, ctx%, and 5h/7d reset+runway are NOT repeated here — all
+        # Model name, ctx%, and 5h/7d reset+可撐 are NOT repeated here — all
         # already always-visible in the statusLine (see statusline_hook).
         # One surface, one number, per metric.
         sys.exit(0)
@@ -1063,9 +1201,9 @@ def main():
     date = calls[0]["timestamp"][:10] if calls[0]["timestamp"] else "?"
     shown = len(calls)
     if last_n and total_calls > last_n:
-        label = f"latest {shown} (of {total_calls})"
+        label = f"最新 {shown} 筆（共 {total_calls} 筆）"
     elif last_n:
-        label = f"latest {shown}"
+        label = f"最新 {shown} 筆"
     else:
         label = f"{shown} API calls"
 
