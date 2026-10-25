@@ -1,0 +1,56 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "for p in python3 python \"py -3\"; do if $p -c 1 >/dev/null 2>&1; then exec $p \"${CLAUDE_PLUGIN_ROOT}/scripts/usage-analyze.py\" --stop-hook; fi; done"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "for p in python3 python \"py -3\"; do if $p -c 1 >/dev/null 2>&1; then exec $p \"${CLAUDE_PLUGIN_ROOT}/scripts/wake-nudge.py\"; fi; done"
+          }
+        ]
+      },
+      {
+        "matcher": "clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "for p in python3 python \"py -3\"; do if $p -c 1 >/dev/null 2>&1; then exec $p \"${CLAUDE_PLUGIN_ROOT}/scripts/auto-wake.py\"; fi; done"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "for p in python3 python \"py -3\"; do if $p -c 1 >/dev/null 2>&1; then exec $p \"${CLAUDE_PLUGIN_ROOT}/scripts/nap-nudge.py\"; fi; done"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "for p in python3 python \"py -3\"; do if $p -c 1 >/dev/null 2>&1; then exec $p \"${CLAUDE_PLUGIN_ROOT}/scripts/read-dedup.py\"; fi; done"
+          }
+        ]
+      }
+    ]
+  }
+}

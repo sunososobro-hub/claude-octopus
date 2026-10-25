@@ -1,0 +1,14 @@
+{
+  "name": "oct-toolkit",
+  "description": "Token-frugal session memory and usage tracking for Claude Code.",
+  "owner": {
+    "name": "sunososobro"
+  },
+  "plugins": [
+    {
+      "name": "oct-toolkit",
+      "source": ".",
+      "description": "Nap/wake session handoff, memory tidy, duplicate-read guard, and 5h/7d rate-limit status bar."
+    }
+  ]
+}
