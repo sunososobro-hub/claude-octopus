@@ -1,7 +1,5 @@
 # oct-toolkit
 
-[繁體中文](README.zh-TW.md)
-
 Install, then just /clear when reminded — everything else runs in the background.
 
 Claude Code plugin: nap/wake session handoff, memory tidy, duplicate-read guard, and 5h/7d rate-limit status bar.

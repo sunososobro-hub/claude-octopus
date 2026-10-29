@@ -1,59 +1,43 @@
 ---
-description: "Wake up: read a checkpoint and continue (replaces claude --resume); <keyword> searches checkpoints + long-term memory; --memory browses the memory index"
+description: "Wake up: read a checkpoint and continue; <keyword> searches checkpoints + memory; --memory browses the memory index"
 ---
 
 # oct-wake
 
-Resume from an `/oct-nap` checkpoint; also the entry point for long-term memory.
+Resume from an `/oct-nap` checkpoint; also the entry to long-term memory.
+
+Args: none = latest unconsumed; `<hash>` (8 chars); `--list`; `--list all` (active + archived); `--memory`; `<keyword>` (checkpoints + memory).
+
+Setup (prefix every Bash call; `SUM` = checkpoint dir, also used in prose):
 
 ```bash
-/oct-wake              # Load the latest unconsumed checkpoint
-/oct-wake <hash>       # Load a specific checkpoint by its 8-char hash
-/oct-wake --list       # List recent checkpoints without loading one
-/oct-wake --list all   # List everything: active + archived
-/oct-wake --memory     # List long-term memory index, pick what to load
-/oct-wake <keyword>    # Search checkpoints AND long-term memory
+SUM="${CLAUDE_CONFIG_DIR:-~/.claude}/summaries"
+SCRIPT="${CLAUDE_PLUGIN_ROOT}/scripts/usage-analyze.py"
+PY=$(for p in python3 python "py -3"; do $p -c 1 >/dev/null 2>&1 && { echo "$p"; break; }; done)
 ```
 
-Pools: checkpoints (`${CLAUDE_CONFIG_DIR:-~/.claude}/summaries/`) and long-term memory (`${CLAUDE_CONFIG_DIR:-~/.claude}/projects/<slug>/memory/`, `<slug>` = current working directory with every `/` replaced by `-`; the directory named in the auto-memory section of the system prompt). `MEMORY.md` there is the index. Read only the index to list or search; read individual memory files only after the user picks them.
+Pools: checkpoints (`$SUM/`) and long-term memory (`${CLAUDE_CONFIG_DIR:-~/.claude}/projects/<slug>/memory/`; `<slug>` = cwd with every `/` replaced by `-`; the dir named in the system prompt's auto-memory section). `MEMORY.md` there is the index: read only it to list/search; read memory files only after the user picks them.
 
 ## Step 0 — Entry-fee check
 
-On every invocation, in the same Bash call as Step 1's reads, run:
-
-```bash
-SCRIPT="${CLAUDE_PLUGIN_ROOT}/scripts/usage-analyze.py"
-PY=$(for p in python3 python "py -3"; do $p -c 1 >/dev/null 2>&1 && { echo "$p"; break; }; done)
-$PY "$SCRIPT" --entry-fee-check 2>&1
-```
-
-No output is the normal case; do not mention it. If it prints a line, show it as-is and ask the accept/decline question it poses. On yes run `$PY "$SCRIPT" --entry-fee-accept` and confirm briefly; on no or no response leave the baseline alone. Do this once, inline, without delaying Step 1.
+In the same Bash call as Step 1's reads run `$PY "$SCRIPT" --entry-fee-check 2>&1`. No output is normal: say nothing. If it prints a line, show it as-is and ask its accept/decline question; yes -> `$PY "$SCRIPT" --entry-fee-accept` and confirm briefly; no/no response -> leave baseline alone. Inline; do not delay Step 1.
 
 ## Step 1 — Find it
 
-`${CLAUDE_CONFIG_DIR:-~/.claude}/summaries/index.md` has one line per active checkpoint (hash, date, project tag, task one-liner); `/oct-nap` maintains it and archives older same-project checkpoints. For all listing, clustering and keyword search use `index.md`; open an individual checkpoint file only in Step 2 after the user picks it.
+`$SUM/index.md` has one line per active checkpoint (hash, date, project tag, task one-liner); `/oct-nap` maintains it and archives older same-project checkpoints. Use `index.md` for all listing, clustering and keyword search; open a checkpoint file only in Step 2.
 
-Reconcile: `--wake-state` prints the index, the checkpoint files (`*.md` except `index.md`; `(none)` when empty) and `.last_woken`. One Bash call, together with Step 0:
+One Bash call with Step 0: `$PY "$SCRIPT" --wake-state 2>&1` prints the index, the checkpoint files (`*.md` except `index.md`; `(none)` when empty) and `.last_woken`. Never make a separate Bash call just to read `.last_woken`. Reconcile:
+- File with no index line: read only its task line, append a line to `index.md` (create with header if missing).
+- Index line with no file: drop it only if the files list has no `<hash>.md` for it; `(none)` means no files at all, not a reason to drop lines that still have files.
+- Filenames match index hashes 1:1: render from the index; do not reopen files or re-derive tags.
 
-```bash
-SCRIPT="${CLAUDE_PLUGIN_ROOT}/scripts/usage-analyze.py"
-PY=$(for p in python3 python "py -3"; do $p -c 1 >/dev/null 2>&1 && { echo "$p"; break; }; done)
-$PY "$SCRIPT" --entry-fee-check 2>&1
-$PY "$SCRIPT" --wake-state 2>&1
-```
+Sort by index date, newest first. When reading a checkpoint file, read `## Task` / `## Next Steps`.
 
-Never issue a separate Bash call just to read `.last_woken`.
-- File with no index line: read just its task line, append a line to `index.md` (create with header if missing).
-- Index line with no file: drop the line only if the `files` section lists no `<hash>.md` for it; `(none)` means no files at all, so never treat it as a reason to drop lines that still have files.
-- If filenames match index hashes 1:1, render directly from the index; do not reopen files or re-derive tags.
-
-Sort by index date, newest first. When reading a checkpoint's own file, read `## Task` / `## Next Steps`.
-
-- `--list`: show the 5 most recent active checkpoints (hash, date, task line); if more, add `...N more older ones, use --list all to see everything`. STOP; load nothing.
-- `--list all`: two sections, In progress (all active) and Archived (`${CLAUDE_CONFIG_DIR:-~/.claude}/summaries/archive/*.md` if present). STOP; load nothing.
-- `--memory`: read `MEMORY.md` only. Show entries as a numbered list (name + description). Ask which to load. STOP until the user picks.
-- Specific hash: use that file (active or archived).
-- Any other non-flag argument (keyword, project name, phrase): search active checkpoints, archived checkpoints (task line + content) and `MEMORY.md` index lines. Show one numbered list, each hit tagged with its source:
+- `--list`: 5 most recent active (hash, date, task line); if more, add `...N more older ones, use --list all to see everything`. STOP; load nothing.
+- `--list all`: sections In progress (all active) and Archived (`$SUM/archive/*.md` if present). STOP; load nothing.
+- `--memory`: read `MEMORY.md` only; numbered list (name + description); ask which to load. STOP until the user picks.
+- Hash: use that file (active or archived).
+- Other non-flag argument (keyword, project, phrase): search active + archived checkpoints (task line + content) and `MEMORY.md` index lines. One numbered list, each hit tagged by source:
 
   ```
   🔍 Related to "<keyword>"
@@ -64,11 +48,11 @@ Sort by index date, newest first. When reading a checkpoint's own file, read `##
   Load which? (e.g. "1", "2 3")
   ```
 
-  Always confirm, even with one hit. Exception: if the user's phrasing already says exactly what they want (e.g. "load the memory for X") and one clearly-most-relevant candidate remains after ruling out false positives by content, load it directly and report what was loaded. Ask only if 2+ candidates remain indistinguishable.
-- No flags: count active checkpoints and cluster by project (grouping rules below).
-  - Exactly one checkpoint total: load it directly.
-  - One cluster only: list its checkpoints (numbered, hash, date, task line) and ask which to load.
-  - More than one cluster: first show only cluster names (count + most recent date each):
+  Always confirm, even with one hit. Exception: if the user's phrasing already says exactly what they want ("load the memory for X") and one clearly-most-relevant candidate remains after ruling out false positives by content, load it and report what was loaded. Ask only if 2+ indistinguishable candidates remain.
+- No args: count active checkpoints, cluster by project (Grouping rules).
+  - One checkpoint total: load it.
+  - One cluster: list it (numbered, hash, date, task line); ask which.
+  - Several clusters: show only cluster names (count + latest date):
 
     ```
     You have N projects in progress:
@@ -79,45 +63,42 @@ Sort by index date, newest first. When reading a checkpoint's own file, read `##
     Which project do you want to resume?
     ```
 
-    After the user picks a cluster:
-    - One checkpoint: load it directly.
-    - Several: they are successive snapshots of one task. Read all of them, synthesize one todo view, and ask yes/no (not a numbered pick):
+    After the pick: one checkpoint -> load it. Several are successive snapshots of one task: read all, synthesize one todo view, ask yes/no (not a numbered pick):
 
-      ```
-      📋 <project> — N checkpoints merged (latest <hash>, <date time>)
+    ```
+    📋 <project> — N checkpoints merged (latest <hash>, <date time>)
 
-      Current status: [latest checkpoint's ## Task, one line]
+    Current status: [latest checkpoint's ## Task, one line]
 
-      ✅ N items done (type "expand" to view)
-      ❓ N items look done (unmarked, worth confirming first)
+    ✅ N items done (type "expand" to view)
+    ❓ N items look done (unmarked, worth confirming first)
 
-      Todo
-      - [ ] [still-open items, oldest-written first]
+    Todo
+    - [ ] [still-open items, oldest-written first]
 
-      [latest checkpoint's ## Decisions / Watch, in full]
+    [latest checkpoint's ## Decisions / Watch, in full]
 
-      Resume?
-      ```
+    Resume?
+    ```
 
-      Rules:
-      - Walk the cluster oldest to newest. Open items are the union across the cluster; an item leaves the open list only when ticked `[x]` or marked `[-] dropped: <reason>` in a later checkpoint. Dedupe by item, keep each item's latest status.
-      - Show only open `[ ]` items. Collapse `[x]` and `[-] dropped` items into the `✅ N items done` line; expand into a `- [x]` list only if the user asks ("expand", "what was completed").
-      - An item that merely sounds finished (from later Task/Key Findings) but was never ticked goes on the `❓` line, never into the confirmed count and never silently dropped.
-      - "Current status" = latest checkpoint's Task line. Decisions = latest checkpoint's `## Decisions / Watch` in full (never collapsed); do not merge Decisions across checkpoints.
-      - If the checkpoints are unrelated sub-threads rather than a linear progression, say so and list them numbered instead.
-      - On "Resume?" yes: use the latest checkpoint in the cluster for Steps 2-3. Mention once that the older ones look superseded (the next `/oct-nap` on this project archives them); do not archive yourself.
-  - The drill-down applies only to the bare no-flag call (`--list` and `--list all` stay flat/full). It applies regardless of `.last_woken`; never default to "most recent". `.last_woken` only drives the SessionStart nudge.
+    - Walk oldest to newest. Open items = union across the cluster; an item leaves only when ticked `[x]` or `[-] dropped: <reason>` in a later checkpoint. Dedupe by item, keep latest status.
+    - Show only open `[ ]`. Collapse `[x]`/`[-]` into the `✅ N items done` line; expand to a `- [x]` list only on request ("expand").
+    - An item that only sounds finished (later Task/Key Findings) but was never ticked goes on the `❓` line; never in the done count, never silently dropped.
+    - Current status = latest Task line. Decisions = latest `## Decisions / Watch` in full (never collapsed, not merged across checkpoints).
+    - Unrelated sub-threads rather than a linear progression: say so and list them numbered.
+    - "Resume?" yes: use the cluster's latest checkpoint for Steps 2-3. Mention once that older ones look superseded (next `/oct-nap` on this project archives them); do not archive yourself.
+  - The drill-down applies only to the no-arg call, regardless of `.last_woken`; never default to "most recent". `.last_woken` only drives the SessionStart nudge.
 
-After `/clear`, a SessionStart hook (`auto-wake.py`) injects the latest checkpoint and `.last_woken` automatically: confirm in the Step 4 format and skip Steps 1-3 except Step 3b (use the injected nap_verify output).
+After `/clear`, the SessionStart hook `auto-wake.py` injects the latest checkpoint and `.last_woken`: confirm in the Step 4 format and skip Steps 1-3 except 3b (use the injected nap_verify output).
 
-If there are no checkpoint files, say so and suggest `/oct-nap` before clearing; do not fabricate one.
+No checkpoint files: say so, suggest `/oct-nap` before clearing; fabricate nothing.
 
 ### Grouping rules
 
-- Group by the `index.md` project-tag column (assigned at nap time from the checkpoint's `## Task` line). Re-derive a tag only for a checkpoint just added during reconciliation (ticket ID, repo/app name, or initiative name in its task line).
-- Identify the project from the task line only; do not scan the body for shared identifiers or chain checkpoints through passing mentions. A task line spanning several projects clusters by that combined identity on its own.
-- Clusters sorted by most recent checkpoint (newest first); within a cluster newest first, numbered from 1 per cluster. A checkpoint sharing no project gets its own cluster. Archived section in `--list all` stays flat.
-- Because numbers repeat across clusters, accept a hash or "cluster name + number" as the pick.
+- Group by the `index.md` project-tag column (set at nap time from `## Task`). Re-derive a tag only for a checkpoint just added in reconciliation (ticket ID, repo/app, or initiative in its task line).
+- Identify the project from the task line only; do not scan bodies or chain checkpoints via passing mentions. A task line spanning projects clusters by that combined identity.
+- Clusters newest first; within a cluster newest first, numbered from 1 per cluster. A checkpoint with no shared project gets its own cluster. Archived stays flat.
+- Numbers repeat across clusters: accept a hash or "cluster name + number".
 
 ```
 📋 Checkpoints in progress
@@ -132,55 +113,53 @@ If there are no checkpoint files, say so and suggest `/oct-nap` before clearing;
 
 ### Due dates
 
-Checkpoints without `## Due` keep the ordering above. For ones with it:
-- Badge after the task line: `📅 YYYY-MM-DD` for a date, the phrase as written with `⏰` (e.g. `⏰ this is urgent`) when not a date; `⚠️ YYYY-MM-DD` instead of `📅` if the date is past.
-- Within a cluster, due checkpoints go first, soonest-due first; non-dated urgency phrases above dated ones.
-- A cluster containing any due checkpoint sorts ahead of clusters without one.
+No `## Due`: ordering above. With it:
+- Badge after the task line: `📅 YYYY-MM-DD` for a date; the phrase as written with `⏰` when not a date (`⏰ this is urgent`); `⚠️ YYYY-MM-DD` instead of `📅` if past.
+- Within a cluster: due first, soonest first; non-dated urgency phrases above dated ones.
+- A cluster with any due checkpoint sorts ahead of clusters without one.
 
 ## Step 2 — Load it
 
-Checkpoint: read the file (~1-2k tokens). Do not read the original session transcript or reconstruct more than the checkpoint holds. Combine with Step 3 in one Bash call when loading a specific checkpoint (or the several read for cluster synthesis); skip the combination when only `MEMORY.md` files are read.
+Checkpoint: read the file (~1-2k tokens); do not read the session transcript or reconstruct more than it holds. Combine with Step 3 in one Bash call (also when reading several for cluster synthesis); not when only memory files are read.
 
-If `## Related Memory Files` lists memory files, do not auto-load them: list them (name + one-line description from `MEMORY.md`) and ask which to pull in.
+If `## Related Memory Files` lists memory files, do not auto-load: list them (name + one-line description from `MEMORY.md`) and ask which to pull in.
 
-Memory file: read the selected `.md` files. Do not print their content back. Confirm only: `✅ Loaded: <name>, <name>`
+Memory file: read the selected `.md` files; do not echo content. Confirm only: `✅ Loaded: <name>, <name>`
 
 ## Step 3 — Mark consumed (checkpoints only)
 
-Write the loaded checkpoint's hash (plain text) to `${CLAUDE_CONFIG_DIR:-~/.claude}/summaries/.last_woken`:
-
 ```bash
-cat ${CLAUDE_CONFIG_DIR:-~/.claude}/summaries/<hash>.md; echo "<hash>" > ${CLAUDE_CONFIG_DIR:-~/.claude}/summaries/.last_woken
+cat $SUM/<hash>.md; echo "<hash>" > $SUM/.last_woken
 ```
 
 Skip if only memory files were loaded.
 
 ## Step 3b — Quotes and in-flight check
 
-If the checkpoint ends with `## User quotes index`, compare its quotes and numbered proposals against Next Steps; show any ask with no matching item as `⚠️ In the quotes but not in the todo list: ...` (one line each) and add it to Next Steps.
+If the checkpoint ends with `## User quotes index`, compare its quotes and numbered proposals with Next Steps; show each unmatched ask as `⚠️ In the quotes but not in the todo list: ...` (one line each) and add it to Next Steps.
 
-If the checkpoint has `## Running agents`, `## Pending dispatch` or a `Collect <name>` item, use the nap_verify section injected by auto-wake, or run `$PY "$(dirname "$SCRIPT")/nap_verify.py" ${CLAUDE_CONFIG_DIR:-~/.claude}/summaries/<hash>.md` (`SCRIPT` and `PY` set as in Step 0, same Bash call):
-- `✅` -> tick its `Collect <name>` item `[x]`; an `(inferred)` check only means the agent stopped, read its result first.
+If it has `## Running agents`, `## Pending dispatch` or a `Collect <name>` item: use the nap_verify section injected by auto-wake, or run `$PY "$(dirname "$SCRIPT")/nap_verify.py" $SUM/<hash>.md` (same Bash call as Setup):
+- `✅` -> tick its `Collect <name>` item `[x]`; an `(inferred)` check only means the agent stopped: read its result first.
 - `⏳` -> still running; wait for its completion notice, do not re-dispatch.
-- `❌` -> add the printed `- [ ] Chase ...` line to the todo list and handle it this turn.
-- `Pending dispatch` -> the user already asked: dispatch it in this reply without asking.
+- `❌` -> add the printed `- [ ] Chase ...` line to the todo and handle it this turn.
+- `Pending dispatch` -> the user already asked: dispatch in this reply without asking.
 
 ## Step 4 — Confirm
 
 ```
 ✅ Woke from <hash> (<date time>)
 Task: [one-line summary from ## Task]
-[## Awaiting Reply items, if present, listed first, as written]
-[📅/⚠️ Due line, only if the checkpoint has a ## Due section]
+[## Awaiting Reply items, if present, first, as written]
+[📅/⚠️ Due line, only if ## Due exists]
 
 ✅ N items done (type "expand" to view)
 
 Next steps:
 - [ ] [each still-open item from ## Next Steps, as written]
 
-[## Decisions / Watch section, if present, in full]
+[## Decisions / Watch, if present, in full]
 ```
 
-- Show only open `[ ]` items; fold `[x]` and `[-] dropped` items into the `✅ N items done` line; expand only on request. If nothing is checked, omit the done line.
-- Always print `## Decisions / Watch` in full after the todo list; it is never collapsed.
-- Do not print other checkpoint content again.
+- Show only open `[ ]`; fold `[x]`/`[-] dropped` into the done line (omit it if nothing is checked); expand only on request.
+- `## Decisions / Watch` is always printed in full, never collapsed.
+- Do not reprint other checkpoint content.

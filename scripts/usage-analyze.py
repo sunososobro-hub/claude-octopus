@@ -983,10 +983,11 @@ def _detect_explore_before_delegate(tool_names):
     explore = sum(1 for n in tool_names if n in _HABIT_EXPLORE_TOOLS)
     return explore >= _HABIT_EXPLORE_MIN_CALLS and "Task" in tool_names
 
-_QUESTION_RE = re.compile(r"[?？]|嗎|是不是|什麼意思|哪一?台|哪個|which|what do you mean", re.I)
-_STEP_LINE_RE = re.compile(r"^\s*\d+[\.\)、]\s", re.M)
+# Chinese user-phrasing triggers (question/correction detection) kept as unicode escapes so they still match.
+_QUESTION_RE = re.compile(r"[?\uff1f]|\u55ce|\u662f\u4e0d\u662f|\u4ec0\u9ebc\u610f\u601d|\u54ea\u4e00?\u53f0|\u54ea\u500b|which|what do you mean", re.I)
+_STEP_LINE_RE = re.compile(r"^\s*\d+[\.\)\u3001]\s", re.M)
 _CORRECTION_RE = re.compile(
-    r"^(不要|不用|別|不是|停|不對|錯了|我說過|又來|再說一次|don'?t|stop|no[,，]|wrong|not that)", re.I)
+    r"^(\u4e0d\u8981|\u4e0d\u7528|\u5225|\u4e0d\u662f|\u505c|\u4e0d\u5c0d|\u932f\u4e86|\u6211\u8aaa\u904e|\u53c8\u4f86|\u518d\u8aaa\u4e00\u6b21|don'?t|stop|no[,\uff0c]|wrong|not that)", re.I)
 
 def _iso_ts(ts):
     try:

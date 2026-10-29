@@ -17,11 +17,11 @@ REMIND_AFTER = 5
 
 NAP = (
     "oct-toolkit: {why}. Without pausing your reply, run the /oct-nap background procedure now "
-    "(spawn the fork per oct-nap.md, foreground fallback only if the fork is unavailable), then continue the user's request."
+    "(fork per oct-nap.md; foreground only if unavailable), then continue the request."
 )
 REMIND = (
-    "oct-toolkit: a checkpoint was saved {k} turns ago. In your reply, tell the user once, in one short line, "
-    "that they can /clear whenever convenient and it resumes automatically. Do not mention it again."
+    "oct-toolkit: checkpoint saved {k} turns ago. Tell the user once, in one short line, "
+    "they can /clear anytime and it resumes automatically. Do not repeat."
 )
 
 def cfg(key, default=True):

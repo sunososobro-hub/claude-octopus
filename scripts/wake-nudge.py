@@ -157,14 +157,14 @@ def weekly_savings():
                 return None
             WEEKLY_FILE.write_text(wk, encoding="utf-8")
             return (
-                "oct-toolkit: in your first reply, add one short sentence in the user's language, "
-                "saying: %s Do not ask the user to respond." % w["msg"]
+                "oct-toolkit: in your first reply add one short sentence in the user's language: "
+                "%s Do not ask for a response." % w["msg"]
             )
         WEEKLY_FILE.write_text(wk, encoding="utf-8")
         return (
-            "oct-toolkit: in your first reply, add one short sentence in the user's language: "
-            "estimated savings over the past 7 days $%.2f (nap/clear $%.2f, skipped %d duplicate reads $%.2f). "
-            "Do not ask the user to respond." % (d["total"], max(0.0, d["nap"]), d["blocks"], d["read"])
+            "oct-toolkit: in your first reply add one short sentence in the user's language: "
+            "estimated 7-day savings $%.2f (nap/clear $%.2f, %d duplicate reads skipped $%.2f). "
+            "Do not ask for a response." % (d["total"], max(0.0, d["nap"]), d["blocks"], d["read"])
         )
     except Exception:
         return None

@@ -14,8 +14,8 @@ MAX_AGE = 12 * 3600
 MAX_CHARS = 9000
 
 INSTRUCTION = (
-    "oct-toolkit auto-wake: the user just ran /clear. The checkpoint below is their latest /oct-nap for this project. "
-    "Reply once with the oct-wake Step 4 confirmation (Woke from <hash>, Task, still-open Next steps, Decisions / Watch in full), "
+    "oct-toolkit auto-wake: user ran /clear; the checkpoint below is their latest /oct-nap. "
+    "Reply once with the oct-wake Step 4 confirmation (Woke from <hash>, Task, open Next steps, Decisions / Watch in full), "
     "then continue from it. Do not re-read the file.\n\n"
 )
 

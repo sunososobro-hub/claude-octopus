@@ -1,5 +1,5 @@
 ---
-description: "Second opinion — dispatch a clean cold sub-agent with a neutral brief to decide; no model switch, no clearing. `--here` re-evaluates in the current model instead."
+description: "Second opinion: cold sub-agent with a neutral brief decides; no model switch or clearing. `--here` re-evaluates in the current model."
 ---
 
 # oct-consult
