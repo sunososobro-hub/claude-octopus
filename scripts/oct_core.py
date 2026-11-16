@@ -2,7 +2,7 @@
 """oct-toolkit shared core (0.5.3): auto first checkup, rolling no-nap baseline,
 net nap saving, memory-bloat check. Stdlib only, no model calls, no network.
 
-CLI:  oct_core.py <auto-checkup|report|baseline|refresh|memory-scan|memory-mark> [--cwd=PATH] [--days=N]
+CLI:  oct_core.py <auto-checkup|report|baseline|refresh|memory-scan|memory-mark|window> [--cwd=PATH] [--days=N]
 """
 import json
 import os
@@ -41,6 +41,7 @@ DEFAULTS = {
 }
 COLD_CALLS = 3          # first K calls of a session = cold start
 MIN_LONGER = 5          # need this many longer sessions to use the history distribution
+CHECKPOINT_CAP = 9000   # chars of a checkpoint auto-wake injects in full (nap_index.py warns above it)
 CK_DEFAULT = 2000       # checkpoint tokens injected after /clear when no nap history
 MA_TTL_S = 6 * 3600
 RETRY_S = 6 * 3600
@@ -557,6 +558,75 @@ def baseline_print():
     print("net saving = (context - cold start - checkpoint) x cache-read price x expected remaining calls - cold-start CW cost")
 
 
+# ---------- window id: the claude process pid (same across /clear, differs per window) ----------
+def window_id():
+    v = (os.environ.get("CLAUDE_PID") or "").strip()
+    return v if v.isdigit() else ""
+
+
+def pid_alive(pid):
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if os.name == "nt":
+        import ctypes
+        k = ctypes.windll.kernel32
+        h = k.OpenProcess(0x1000, False, pid)
+        if not h:
+            return False
+        code = ctypes.c_ulong()
+        ok = k.GetExitCodeProcess(h, ctypes.byref(code))
+        k.CloseHandle(h)
+        return bool(ok) and code.value == 259
+    try:
+        os.kill(pid, 0)
+        return True
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
+def nap_mark(w=None):
+    w = w or window_id()
+    if w:
+        try:
+            OCT.mkdir(parents=True, exist_ok=True)
+            (OCT / f"napping-{w}").write_text(str(time.time()))
+        except OSError:
+            pass
+
+
+def nap_marked(w, max_age=900):
+    try:
+        t = float((OCT / f"napping-{w}").read_text())
+    except (OSError, ValueError):
+        return 0
+    return t if time.time() - t <= max_age else 0
+
+
+def nap_unmark(w):
+    try:
+        (OCT / f"napping-{w}").unlink()
+    except OSError:
+        pass
+
+
+def window_print():
+    me = window_id()
+    live = set()
+    try:
+        for line in (CLAUDE_DIR / "summaries" / "index.md").read_text(encoding="utf-8", errors="replace").splitlines():
+            parts = [x.strip() for x in line.split("|")]
+            if len(parts) >= 5 and parts[4].isdigit() and parts[4] != me and pid_alive(parts[4]):
+                live.add(parts[4])
+    except OSError:
+        pass
+    print(me)
+    print("live: " + " ".join(sorted(live)))
+
+
 def report_print(cwd=None):
     total, done = scan_all(deadline_s=30)
     baseline_build()
@@ -586,6 +656,8 @@ def main():
         memory_scan(cwd)
     elif cmd == "memory-mark":
         memory_mark(cwd)
+    elif cmd == "window":
+        window_print()
 
 
 if __name__ == "__main__":
