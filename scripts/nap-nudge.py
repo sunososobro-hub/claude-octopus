@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -159,6 +160,13 @@ def main():
         path = payload["transcript_path"]
     except Exception:
         return
+    if re.match(r"\s*/(oct-toolkit:)?oct-nap\b", payload.get("prompt") or ""):
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            import oct_core
+            oct_core.nap_mark()
+        except Exception:
+            pass
     try:
         n, usage, first, calls = scan(path)
     except OSError:

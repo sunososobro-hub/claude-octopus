@@ -6,7 +6,7 @@ description: "Wake up: read a checkpoint and continue; <keyword> searches checkp
 
 Resume from an `/oct-nap` checkpoint; also the entry to long-term memory.
 
-Args: none = latest unconsumed; `<hash>` (8 chars); `--list`; `--list all` (active + archived); `--memory`; `<keyword>` (checkpoints + memory).
+Args: none = latest unconsumed; `<hash>` (8 chars `[0-9a-z]`, not necessarily hex); `--list`; `--list all` (active + archived); `--memory`; `<keyword>` (checkpoints + memory).
 
 Setup (prefix every Bash call; `SUM` = checkpoint dir, also used in prose):
 
@@ -24,12 +24,11 @@ In the same Bash call as Step 1's reads run `$PY "$SCRIPT" --entry-fee-check 2>&
 
 ## Step 1 — Find it
 
-`$SUM/index.md` has one line per active checkpoint (hash, date, project tag, task one-liner); `/oct-nap` maintains it and archives older same-project checkpoints. Use `index.md` for all listing, clustering and keyword search; open a checkpoint file only in Step 2.
+`$SUM/index.md` has one line per active checkpoint (hash, date, project tag, task one-liner, optional window id); `/oct-nap` maintains it and archives older same-project checkpoints. Use `index.md` for all listing, clustering and keyword search; open a checkpoint file only in Step 2.
 
 One Bash call with Step 0: `$PY "$SCRIPT" --wake-state 2>&1` prints the index, the checkpoint files (`*.md` except `index.md`; `(none)` when empty) and `.last_woken`. Never make a separate Bash call just to read `.last_woken`. Reconcile:
-- File with no index line: read only its task line, append a line to `index.md` (create with header if missing).
-- Index line with no file: drop it only if the files list has no `<hash>.md` for it; `(none)` means no files at all, not a reason to drop lines that still have files.
 - Filenames match index hashes 1:1: render from the index; do not reopen files or re-derive tags.
+- Any mismatch (file with no index line, line with no file, garbled text, same hash live and archived): `$PY "${CLAUDE_PLUGIN_ROOT}/scripts/nap_index.py" --health` lists it read-only. Fix once with `--repair` (adds missing lines from the file's task line, drops lines whose file is gone unless there are no files at all, normalizes tags, archives same-session duplicates, gives a colliding archived copy a fresh hash, keeps a `.bak_` copy; `--rehash` also renames non-hex hashes), then re-run `--wake-state`. Do not hand-edit `index.md`.
 
 Sort by index date, newest first. When reading a checkpoint file, read `## Task` / `## Next Steps`.
 
@@ -89,13 +88,13 @@ Sort by index date, newest first. When reading a checkpoint file, read `## Task`
     - "Resume?" yes: use the cluster's latest checkpoint for Steps 2-3. Mention once that older ones look superseded (next `/oct-nap` on this project archives them); do not archive yourself.
   - The drill-down applies only to the no-arg call, regardless of `.last_woken`; never default to "most recent". `.last_woken` only drives the SessionStart nudge.
 
-After `/clear`, the SessionStart hook `auto-wake.py` injects the latest checkpoint and `.last_woken`: confirm in the Step 4 format and skip Steps 1-3 except 3b (use the injected nap_verify output).
+After `/clear`, the SessionStart hook `auto-wake.py` injects this window's latest checkpoint and `.last_woken`: confirm in the Step 4 format and skip Steps 1-3 except 3b (use the injected nap_verify output). If the injected text says it was cut (checkpoint over 9000 chars; priority sections come first), Read the named file for the missing part before confirming (Decisions / Watch in full). If it lists candidates instead (this window has no checkpoint of its own), load nothing until the user picks; `*` marks a project tag matching the working directory.
 
 No checkpoint files: say so, suggest `/oct-nap` before clearing; fabricate nothing.
 
 ### Grouping rules
 
-- Group by the `index.md` project-tag column (set at nap time from `## Task`). Re-derive a tag only for a checkpoint just added in reconciliation (ticket ID, repo/app, or initiative in its task line).
+- Tags are `project` or `project:scope` (scope = a window's sub-stream, e.g. `acme:mobile`); a scoped tag is its own cluster, never merged with another scope or the bare project. Group by the `index.md` project-tag column (set at nap time from `## Task`). Re-derive a tag only for a checkpoint just added in reconciliation (ticket ID, repo/app, or initiative in its task line).
 - Identify the project from the task line only; do not scan bodies or chain checkpoints via passing mentions. A task line spanning projects clusters by that combined identity.
 - Clusters newest first; within a cluster newest first, numbered from 1 per cluster. A checkpoint with no shared project gets its own cluster. Archived stays flat.
 - Numbers repeat across clusters: accept a hash or "cluster name + number".

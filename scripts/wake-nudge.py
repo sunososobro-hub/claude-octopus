@@ -33,7 +33,7 @@ def checkpoint_nudge():
     if not SUMMARIES_DIR.exists():
         return None
     checkpoints = sorted(
-        (f for f in SUMMARIES_DIR.glob("*.md") if re.fullmatch(r"[0-9a-f]{8}", f.stem)),
+        (f for f in SUMMARIES_DIR.glob("*.md") if re.fullmatch(r"[0-9a-z]{8}", f.stem)),
         key=lambda f: f.stat().st_mtime,
         reverse=True,
     )
