@@ -36,7 +36,20 @@ class AgentStatusTest(unittest.TestCase):
             return nv.agent_status(p)
 
     def test_waiting_on_own_background_work_is_running(self):
-        self.assertEqual(self.status([bg_start(), final_text()]), "RUNNING")
+        self.assertEqual(self.status([bg_start(), final_text()]), "WAITING")
+
+    def test_waiting_stays_pending_after_stall_window(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "agent-x.jsonl")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write("\n".join(json.dumps(e) for e in [bg_start(), final_text()]) + "\n")
+            old = os.path.getmtime(p) - 3 * 3600
+            os.utime(p, (old, old))
+            self.assertEqual(nv.agent_status(p), "WAITING")
+
+    def test_background_start_far_before_tail_still_counts(self):
+        filler = [{"type": "user", "message": {"content": "x" * 1000}}] * 400
+        self.assertEqual(self.status([bg_start()] + filler + [final_text()]), "WAITING")
 
     def test_finished_after_background_completed(self):
         self.assertEqual(self.status([bg_start(), notif("completed"), final_text()]), "DONE")

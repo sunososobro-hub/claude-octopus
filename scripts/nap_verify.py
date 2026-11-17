@@ -57,7 +57,8 @@ def handed_back(lines):
 
 def agent_status(path):
     try:
-        lines = tail(path, 300000)
+        with open(path, "rb") as f:
+            lines = f.read().decode("utf-8", "replace").splitlines()
     except OSError:
         return "MISSING"
     done = False
@@ -83,7 +84,7 @@ def agent_status(path):
         has_tool = isinstance(c, list) and any(isinstance(x, dict) and x.get("type") == "tool_use" for x in c)
         done = last.get("stop_reason") == "end_turn" and not has_tool
     if done and started > ended and not handed_back(lines):
-        done = False  # stopped to wait on its own background work: still alive
+        return "WAITING"  # stopped to wait on its own background work: still alive, however long
     if done:
         return "DONE"
     return "STALLED" if time.time() - os.path.getmtime(path) > STALL_MIN * 60 else "RUNNING"
@@ -141,8 +142,10 @@ def check(cond):
         if st == "DONE":
             res = last_text(path)
             return True, "agent finished\n  last activity %s\n  --- final report ---\n%s\n  --- end ---" % (at, res[:3000] or "(no text result)")
+        if st == "WAITING":
+            return "pending", "agent waiting on its own background work (still alive, do not re-dispatch), last activity %s (%d min ago)" % (at, idle)
         if st == "RUNNING":
-            return "pending", "agent running or waiting on its own background work (still alive, do not re-dispatch), last activity %s (%d min ago)" % (at, idle)
+            return "pending", "agent running, last activity %s (%d min ago)" % (at, idle)
         return False, "agent %s: no activity for %d min" % (st, idle)
     if kind == "pushed" and len(args) == 2:
         rc, out = git(args[0], "ls-remote", "--heads", "origin", args[1], timeout=30)
