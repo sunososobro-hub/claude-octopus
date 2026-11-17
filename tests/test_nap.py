@@ -196,8 +196,8 @@ class Scopes(Base):
         for h in ("aaaaaaa1", "aaaaaaa2", "aaaaaaa3", "aaaaaaa4"):
             self.put(h, cp(h, "t"))
         me = str(os.getpid())
-        self.index("aaaaaaa1 | 2026-11-16 10:00 | acme:mobile | m | 1 | " + SID,
-                   "aaaaaaa2 | 2026-11-16 10:00 | acme:main | main | 1",
+        self.index("aaaaaaa1 | 2026-11-16 10:00 | acme:mobile | m | 999999999 | " + SID,
+                   "aaaaaaa2 | 2026-11-16 10:00 | acme:main | main | 999999999",
                    "aaaaaaa3 | 2026-11-16 10:00 | acme:mobile | live other window | " + me,
                    "aaaaaaa4 | 2026-11-16 10:00 | acme | legacy unscoped")
         rows = ni.read_index()[0]
@@ -210,7 +210,7 @@ class Scopes(Base):
         self.put("aaaaaaa1", cp("aaaaaaa1", "t"))
         self.put("aaaaaaa2", cp("aaaaaaa2", "t"))
         self.index("aaaaaaa1 | 2026-11-16 10:00 | p | other live window | %d" % os.getpid(),
-                   "aaaaaaa2 | 2026-11-16 10:00 | p | closed window | 1")
+                   "aaaaaaa2 | 2026-11-16 10:00 | p | closed window | 999999999")
         r = self.cli("--archive", "aaaaaaa1", "aaaaaaa2", env={"CLAUDE_PID": "123456789"})
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("refused: aaaaaaa1", r.stdout)
@@ -267,7 +267,7 @@ class AutoWake(Base):
 
     def test_cwd_fallback_never_loads_another_windows_checkpoint(self):
         self.put("aaaaaaa1", cp("aaaaaaa1", "mobile work"))
-        self.index("aaaaaaa1 | 2026-11-16 10:00 | acme | mobile work | 1 | " + SID)
+        self.index("aaaaaaa1 | 2026-11-16 10:00 | acme | mobile work | 999999999 | " + SID)
         got = aw.pick("C:/work/acme", "555", lambda w: False)
         self.assertEqual(got[0], "candidates")
         self.assertEqual(got[1][0][0], "aaaaaaa1")
