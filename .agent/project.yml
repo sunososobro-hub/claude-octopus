@@ -22,7 +22,9 @@ ci:
   setup: ""
 
 areas:
-  - core
+  - scripts
+  - commands
+  - hooks
   - tests
   - ci
   - docs
@@ -34,6 +36,10 @@ protected_paths:
   - "CLAUDE.md"
   - ".agent/core/**"
   - ".agent/project.yml"
+  - "hooks/**"
+  - ".claude-plugin/**"
+  - "scripts/**"
+  - "hive/pipeline/roles/**"
 
 throttle_issue: 4                 # filled in by onboard.sh
 ledger_issue: 5
