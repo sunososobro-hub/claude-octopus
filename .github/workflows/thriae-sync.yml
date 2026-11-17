@@ -1,0 +1,63 @@
+# Copy to <project>/.github/workflows/thriae-sync.yml. Weekly (and on demand) it refreshes the shared
+# part of AGENTS.md from Thriae and opens or updates ONE pull request. Nothing merges automatically;
+# AGENTS.md is a protected path, so the keeper reviews the PR.
+# Needs: repo setting "Allow GitHub Actions to create and approve pull requests" (Settings > Actions).
+# Cost: one small ubuntu job per week (about 1 minute). Data flows Thriae -> project only.
+name: thriae-sync
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"    # Mondays 03:17 UTC
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Thriae ref (core-vX.Y.Z tag or branch); empty = default branch"
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: thriae-sync
+  cancel-in-progress: false
+
+env:
+  THRIAE_CORE_REPO: sunososobro-hub/thriae   # mirrors: change only this line
+  BASE: master
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BASE }}
+      - name: Fetch Thriae
+        run: |
+          REF="${{ github.event.inputs.ref }}"
+          git clone -q --depth 1 ${REF:+--branch "$REF"} "https://github.com/$THRIAE_CORE_REPO.git" "$RUNNER_TEMP/thriae"
+          echo "SRC=$THRIAE_CORE_REPO@$(git -C "$RUNNER_TEMP/thriae" rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Sync shared part
+        run: bash "$RUNNER_TEMP/thriae/hive/pipeline/scripts/sync_agents.sh" --core "$RUNNER_TEMP/thriae" --source "$SRC"
+      - name: Open or update the PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # ignore the marker line (it carries the source sha): nothing else changed = in sync
+          git add -A -N AGENTS.md hive/pipeline/roles .agent/core 2>/dev/null || true
+          if git diff --quiet -I '^<!-- thriae:start'; then echo "already in sync"; exit 0; fi
+          BR="thriae-sync/${SRC##*@}"; BR="${BR:0:24}"
+          if [ -n "$(gh pr list --head "$BR" --state open --json number -q '.[].number')" ]; then echo "PR for $BR already open"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q -b "$BR"
+          git add -A AGENTS.md hive/pipeline/roles .agent/core 2>/dev/null || git add -A AGENTS.md
+          git commit -q -m "chore: sync shared AGENTS.md from $SRC"
+          git push -q origin "$BR"   # new branch per source sha; never force-push
+          NEW=$(gh pr create --base "$BASE" --head "$BR" --title "chore: sync shared rules from Thriae"             --body "Automated sync of the shared part of AGENTS.md (between the thriae markers), hive/pipeline/roles/ and .agent/core/ from $SRC. The project block is untouched. Protected path: keeper review before merge.")
+          # older open sync PRs are superseded by this one
+          for n in $(gh pr list --state open --json number,headRefName -q '.[] | select(.headRefName | startswith("thriae-sync/")) | select(.headRefName != "'"$BR"'") | .number'); do
+            gh pr close "$n" --delete-branch --comment "Superseded by $NEW"
+          done
