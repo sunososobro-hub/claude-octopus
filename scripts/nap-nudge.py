@@ -21,8 +21,9 @@ NAP = (
     "(fork per oct-nap.md; foreground only if unavailable), then continue the request."
 )
 REMIND = (
-    "oct-toolkit: checkpoint saved {k} turns ago. Tell the user once, in one short line, "
-    "they can /clear anytime and it resumes automatically. Do not repeat."
+    "oct-toolkit: the checkpoint is {k} turns old and does not hold them. Do not say /clear is safe as it is. "
+    "Tell the user once, in one short line: run /oct-nap again before /clear (a /clear now resumes from the "
+    "older checkpoint plus only a short tail of the later turns). Do not repeat."
 )
 
 def cfg(key, default=True):
