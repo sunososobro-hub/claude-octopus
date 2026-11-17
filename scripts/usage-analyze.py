@@ -667,8 +667,7 @@ def _rate_windows(state, now):
     if now - datetime.fromisoformat(updated_at) > timedelta(seconds=_RL_STALE_SECONDS):
         return []
     five = state.get("five_hour")
-    if not five or five.get("used_percentage") is None:
-        return []
+    seven = state.get("seven_day")
 
     windows = []
 
@@ -703,9 +702,9 @@ def _rate_windows(state, now):
             "surplus": surplus_tier > 0, "surplus_tier": surplus_tier,
         })
 
-    add_window("5h", five["used_percentage"], five.get("resets_at"), state.get("history", []), min_span_min=3, window_total_min=_FIVE_HOUR_MIN)
+    if five and five.get("used_percentage") is not None:
+        add_window("5h", five["used_percentage"], five.get("resets_at"), state.get("history", []), min_span_min=3, window_total_min=_FIVE_HOUR_MIN)
 
-    seven = state.get("seven_day")
     if seven and seven.get("used_percentage") is not None:
         add_window("7d", seven["used_percentage"], seven.get("resets_at"), state.get("history_7d", []), min_span_min=120, window_total_min=_SEVEN_DAY_MIN, check_surplus=True)
 
@@ -1666,9 +1665,9 @@ def savings_badge():
     if w5 and w5["turns"] >= _BADGE_MIN_TURNS_5H and w5["actual"] + w5["saved"] >= _BADGE_MIN_USD_5H:
         s5 = _pct_str(w5) or ("0%" if s7 else None)
     if s5:
-        return "🐙 %s 5h" % s5 + (" (7d %s)" % s7 if s7 else "")
+        return "🐙 saved %s 5h" % s5 + (" (7d %s)" % s7 if s7 else "")
     if s7:
-        return "🐙 %s 7d" % s7
+        return "🐙 saved %s 7d" % s7
     return ""
 
 def main():
