@@ -1,0 +1,35 @@
+name: General feedback
+description: Bug report, idea or note. Do not include private information.
+labels: ["triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Issues are public. Do not paste keys, tokens, passwords, email addresses, local paths with
+        your user name, IP addresses, account ids or private links. Use placeholders such as
+        `<YOUR_API_KEY>`, `user@example.com`, `C:\Users\<you>`. Check first with
+        `python scripts/leak_check.py <file>`. For vulnerabilities see SECURITY.md.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options: [Bug, Idea, Question, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened or what do you propose?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce (if a bug)
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Checks
+      options:
+        - label: I removed all private information and ran the leak check.
+          required: true

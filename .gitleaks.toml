@@ -1,0 +1,51 @@
+# Extends the default gitleaks rules with extra credential patterns.
+title = "repo gitleaks config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-password-assignment"
+description = "Password or secret assigned a literal value"
+regex = '''(?i)\b(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?token)\b["']?\s*[:=]\s*["'][^"'\s<>$\{\}]{8,}["']'''
+keywords = ["password", "passwd", "pwd", "secret", "key", "token"]
+
+[[rules]]
+id = "connection-string-with-credentials"
+description = "Connection string embedding user:password"
+regex = '''(?i)\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqps?|mssql)://[^\s:/@<>]+:[^\s@<>/]{3,}@[^\s/<>]+'''
+keywords = ["://"]
+
+[[rules]]
+id = "webhook-url"
+description = "Chat or automation webhook URL"
+regex = '''https://(?:hooks\.slack\.com/services/[A-Za-z0-9/_-]{20,}|(?:discord(?:app)?\.com)/api/webhooks/\d+/[\w-]{20,}|[\w.-]+\.webhook\.office\.com/webhookb2/[\w@/-]{20,}|hooks\.zapier\.com/hooks/catch/\d+/\w+)'''
+keywords = ["hooks.slack.com", "webhooks", "webhook.office.com", "zapier.com"]
+
+[[rules]]
+id = "service-account-json"
+description = "Cloud service-account key file contents"
+regex = '''"type"\s*:\s*"service_account"'''
+keywords = ["service_account"]
+
+[[rules]]
+id = "jwt-token"
+description = "JSON Web Token"
+regex = '''\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b'''
+keywords = ["eyj"]
+
+[[rules]]
+id = "private-key-block"
+description = "PEM private key header"
+regex = '''-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----'''
+keywords = ["private key"]
+
+[[rules]]
+id = "bypass-marker"
+description = "Scanner-bypass annotation in submitted text"
+regex = '''gitleaks:allow'''
+keywords = ["gitleaks:allow"]
+
+[allowlist]
+description = "Fixtures and the config itself"
+paths = ['''^\.gitleaks\.toml$''', '''^tests/test_leak_check\.py$''']
