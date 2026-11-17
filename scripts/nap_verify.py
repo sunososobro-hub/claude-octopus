@@ -12,6 +12,7 @@ import time
 CLAUDE_DIR = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
 STALL_MIN = 30
 NOWIN = 0x08000000 if os.name == "nt" else 0
+TERMINAL_RE = re.compile(r"(?i)<status>\s*(completed|failed|killed|stopped|cancell?ed)\s*</status>")
 DONE_RE = re.compile(r"(?i)done when\s*:\s*(.+)$")
 _base = {}
 
@@ -50,27 +51,40 @@ def tail(path, size):
         return f.read().decode("utf-8", "replace").splitlines()
 
 
+def handed_back(lines):
+    return any('"SubagentHandback"' in ln and '"tool_use"' in ln for ln in lines)
+
+
 def agent_status(path):
     try:
-        lines = tail(path, 300000)
+        with open(path, "rb") as f:
+            lines = f.read().decode("utf-8", "replace").splitlines()
     except OSError:
         return "MISSING"
     done = False
     last = None
+    started = ended = 0
     for ln in lines:
         try:
             d = json.loads(ln)
         except Exception:
             continue
+        if d.get("type") == "user" and "<task-notification" in ln and TERMINAL_RE.search(ln):
+            ended += 1
         if d.get("type") == "assistant":
             last = d.get("message") or {}
             c = last.get("content")
+            if isinstance(c, list):
+                started += sum(1 for x in c if isinstance(x, dict) and x.get("type") == "tool_use"
+                               and (x.get("name") == "Monitor" or (x.get("input") or {}).get("run_in_background") is True))
             if isinstance(c, list) and any(isinstance(x, dict) and x.get("type") == "tool_use" and x.get("name") == "SubagentHandback" for x in c):
                 done = True
     if not done and last:
         c = last.get("content")
         has_tool = isinstance(c, list) and any(isinstance(x, dict) and x.get("type") == "tool_use" for x in c)
         done = last.get("stop_reason") == "end_turn" and not has_tool
+    if done and started > ended and not handed_back(lines):
+        return "WAITING"  # stopped to wait on its own background work: still alive, however long
     if done:
         return "DONE"
     return "STALLED" if time.time() - os.path.getmtime(path) > STALL_MIN * 60 else "RUNNING"
@@ -128,6 +142,8 @@ def check(cond):
         if st == "DONE":
             res = last_text(path)
             return True, "agent finished\n  last activity %s\n  --- final report ---\n%s\n  --- end ---" % (at, res[:3000] or "(no text result)")
+        if st == "WAITING":
+            return "pending", "agent waiting on its own background work (still alive, do not re-dispatch), last activity %s (%d min ago)" % (at, idle)
         if st == "RUNNING":
             return "pending", "agent running, last activity %s (%d min ago)" % (at, idle)
         return False, "agent %s: no activity for %d min" % (st, idle)
