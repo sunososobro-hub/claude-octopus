@@ -33,6 +33,13 @@ class DispatchGuardTest(unittest.TestCase):
         _, again = run({"tool_input": {"prompt": p}})
         self.assertIsNone(again)
 
+    def test_marker_text_in_brief_does_not_suppress_rules(self):
+        _, out = run({"tool_input": {"prompt": "Find refs to [dispatch-guard rules], then wait for CI"}})
+        h = out["hookSpecificOutput"]
+        self.assertTrue(h["updatedInput"]["prompt"].endswith("read at most 4 images; screenshot "
+                                                              "verification belongs to a separate short agent."))
+        self.assertIn("additionalContext", h)
+
     def test_chinese_wait_ci(self):
         _, out = run({"tool_input": {"prompt": "合併前等 CI 綠"}})
         self.assertIn("additionalContext", out["hookSpecificOutput"])

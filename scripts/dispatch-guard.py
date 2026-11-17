@@ -18,13 +18,12 @@ RULES = (
     "- Never poll in a loop. Stay within 25 steps and read at most 4 images; screenshot "
     "verification belongs to a separate short agent."
 )
-MARK = "[dispatch-guard rules]"
 
 
 def build(payload):
     ti = payload.get("tool_input") or {}
     prompt = ti.get("prompt")
-    if not isinstance(prompt, str) or MARK in prompt:
+    if not isinstance(prompt, str) or prompt.endswith(RULES):
         return None
     out = {"hookEventName": "PreToolUse", "permissionDecision": "allow",
            "updatedInput": dict(ti, prompt=prompt + RULES)}
