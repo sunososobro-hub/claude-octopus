@@ -10,7 +10,7 @@ Placeholders are fine: <YOUR_API_KEY>, user@example.com, C:\\Users\\<you>, examp
 127.0.0.1.
 
 Allowlist (optional, owner-edited): one entry per line, "kind:value  # reason", where
-kind is email, domain, ip, handle, repo (GitHub owner) or file (path prefix to skip).
+kind is email, domain, ip, handle, repo (GitHub owner), repopath (owner/repo) or file (path prefix to skip).
 The owner of this repository (from GITHUB_REPOSITORY or the origin remote) is always allowed.
 """
 import os
@@ -21,28 +21,51 @@ import sys
 PLACEHOLDER_DOMAINS = {"example.com", "example.org", "example.net", "localhost", "invalid", "test"}
 PLACEHOLDER_IPS = {"127.0.0.1", "0.0.0.0", "255.255.255.255"}
 PLACEHOLDER_NAMES = {"you", "user", "username", "name", "your_name", "yourname", "me", "foo", "bar", "example", "x"}
-ALWAYS_OK_DOMAINS = {"anthropic.com", "github.com", "claude.ai", "claude.com", "python.org", "gitleaks.io"}
+ALWAYS_OK_DOMAINS = {
+    "anthropic.com", "github.com", "githubusercontent.com", "github.io", "claude.ai", "claude.com",
+    "python.org", "pypi.org", "pythonhosted.org", "npmjs.com", "npmjs.org", "nodejs.org", "gitleaks.io",
+    "readthedocs.io", "w3.org", "json-schema.org", "shields.io", "wikipedia.org", "mozilla.org",
+    "microsoft.com", "stackoverflow.com",
+}
+# decorators and doc-comment tags that look like @handles
+NOT_HANDLES = {
+    "staticmethod", "classmethod", "property", "dataclass", "abstractmethod", "override", "wraps", "cache",
+    "param", "params", "returns", "return", "type", "typedef", "throws", "example", "see", "deprecated",
+    "since", "author", "todo", "link", "default", "private", "public", "internal", "callback", "template",
+}
+MODEL_PREFIXES = ("claude", "gpt", "gemini", "llama", "mistral", "opus", "sonnet", "haiku", "text-embedding")
+BARE_TLDS = "com|net|org|io|dev|ai|edu|gov|info|biz|xyz|cloud|site|tw|cn|jp|uk|de|fr|kr|ru|in|br"
 SKIP_EXT = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".gz", ".pyc", ".woff", ".woff2"}
 MAX_BYTES = 2_000_000
 FILE_TLDS = {"py", "md", "json", "js", "sh", "txt", "yml", "yaml", "toml", "html", "css", "ts", "cfg", "ini", "log", "lock"}
 
 RX = {
     "email": re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)"),
-    "phone": re.compile(r"(?<![\w.])(?:\+?886[-\s]?9\d{2}[-\s]?\d{3}[-\s]?\d{3}|09\d{2}[-\s]?\d{3}[-\s]?\d{3}|\+[1-9]\d{9,14})(?![\w.])"),
+    # E.164 (+ and 8-15 digits, optional separators), (415) 555-0100, 415-555-0100, 0912-345-678
+    "phone": re.compile(
+        r"(?<![\w.+-])(?:\+[1-9](?:[\s.-]?\d){7,14}|\(\d{2,4}\)[\s-]?\d{3,4}[\s-]\d{3,4}"
+        r"|\d{2,4}-\d{3,4}-\d{3,4})(?![\w.-])"),
     "ip": re.compile(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.])"),
     "mac": re.compile(r"(?<![0-9A-Fa-f:-])(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f:-])"),
-    "local path": re.compile(r"(?:[A-Za-z]:[\\/]+Users[\\/]+|/home/|/Users/)([^\\/\s\"'`<>]+)", re.I),
+    "local path": re.compile(
+        r"(?:(?<![\w])[A-Za-z]:[\\/]+(?i:Users)[\\/]+|(?<![\w.-])/home/|(?<![\w.-])/Users/)([^\\/\s\"'`<>]+)"),
+    # Claude project directory encoding of a local path: C--Users-alice-proj, -Users-alice-proj, -home-alice-proj
+    "encoded path": re.compile(r"(?:(?<![\w])[A-Za-z]--Users-|(?<![\w-])-(?:Users|home)-)([A-Za-z0-9_.]+)"),
+    "bare domain": re.compile(r"(?<![\w@.:/-])((?:[A-Za-z0-9-]+\.)+(?:%s))(?![\w-]|\.\w)" % BARE_TLDS, re.I),
+    "repo shorthand": re.compile(
+        r"(?:gh\s+(?:repo\s+(?:clone|view|fork)|pr|issue|run)|git\s+clone|--repo[ =]|\s-R\s|repos/|"
+        r"GITHUB_REPOSITORY[=:]\s*|\brepo(?:sitory)?\s*[:=]\s*)\s*[\"']?([A-Za-z0-9][A-Za-z0-9-]*)/([A-Za-z0-9_.-]+)"),
     "domain": re.compile(r"https?://([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)", re.I),
     "share link": re.compile(
         r"https?://(?:[\w-]+\.)*(?:docs\.google\.com|drive\.google\.com|dropbox\.com|notion\.so|notion\.site|"
         r"claude\.ai/(?:artifact|share|chat|code)|chatgpt\.com/share|1drv\.ms|onedrive\.live\.com)[^\s\"'<>)]*", re.I),
     "account id": re.compile(
-        r"(?<![\w.-])(?:\d{10,}|G-[A-Z0-9]{8,}|UA-\d{4,}-\d+|[a-z][a-z0-9-]{4,28}-[a-z0-9]{4,}-\d{3,}|properties/\d{6,})(?![\w-])"),
+        r"(?<![\w.-])(?:G-[A-Z0-9]{8,}|UA-\d{4,}-\d+|[a-z][a-z0-9-]{4,28}-[a-z0-9]{4,}-\d{3,}|properties/\d{6,})(?![\w-])"),
     "session id": re.compile(r"session[_ -]?(?:id)?[\"']?\s*[:=/]\s*[\"']?[A-Za-z0-9_-]{16,}", re.I),
     "uuid": re.compile(r"(?<![0-9A-Fa-f-])[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}(?![0-9A-Fa-f-])"),
     "repo name": re.compile(r"github\.com[/:]([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)", re.I),
     "handle": re.compile(r"(?<![\w@./+-])@([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))(?![\w@.-]*\.[A-Za-z])"),
-    "bypass marker": re.compile(r"gitleaks:allow|nosec\b|leak[-_ ]?check:\s*(?:ignore|skip|allow)", re.I),
+    "bypass marker": re.compile(r"\bgitleaks:allow|\bnosec\b|\bleak[-_ ]?check:\s*(?:ignore|skip|allow)", re.I),
 }
 
 
@@ -114,25 +137,41 @@ def scan_line(line, allow):
         if name.lower() in PLACEHOLDER_NAMES or name.startswith(("<", "%", "$", "{", "~")):
             continue
         hits.add("local path")
+    for m in RX["encoded path"].finditer(line):
+        if m.group(1).lower() not in PLACEHOLDER_NAMES:
+            hits.add("local path")
     for m in RX["domain"].finditer(line):
+        if not domain_ok(m.group(1), allow):
+            hits.add("domain")
+    for m in RX["bare domain"].finditer(line):
         if not domain_ok(m.group(1), allow):
             hits.add("domain")
     if RX["share link"].search(line):
         hits.add("share link")
-    if RX["account id"].search(line):
-        hits.add("account id")
+    for m in RX["account id"].finditer(line):
+        if not m.group(0).lower().startswith(MODEL_PREFIXES):
+            hits.add("account id")
     if RX["session id"].search(line):
         hits.add("session id")
     if RX["uuid"].search(line):
         hits.add("uuid")
     for m in RX["repo name"].finditer(line):
         owner = m.group(1).lower()
-        if owner in allow.get("repo", ()) or owner in PLACEHOLDER_NAMES | {"owner", "org", "anthropics"} or owner.startswith("<"):
+        if owner in allow.get("repo", ()) or owner in PLACEHOLDER_NAMES | {"owner", "org", "anthropics", "users", "orgs", "repos"} or owner.startswith("<"):
+            continue
+        if m.group(1).lower() + "/" + m.group(2).lower() in allow.get("repopath", ()):
+            continue
+        hits.add("repo name")
+    for m in RX["repo shorthand"].finditer(line):
+        owner = m.group(1).lower()
+        if owner in allow.get("repo", ()) or owner in PLACEHOLDER_NAMES | {"owner", "org", "anthropics", "https", "http"}:
+            continue
+        if owner + "/" + m.group(2).lower().rstrip(".") in allow.get("repopath", ()):
             continue
         hits.add("repo name")
     for m in RX["handle"].finditer(line):
         h = m.group(1).lower()
-        if h in PLACEHOLDER_NAMES or h in allow.get("handle", ()) or h.startswith(("types", "anthropic")):
+        if h in NOT_HANDLES or h in PLACEHOLDER_NAMES or h in allow.get("handle", ()) or h.startswith(("types", "anthropic")):
             continue
         hits.add("handle")
     if RX["bypass marker"].search(line):
@@ -175,6 +214,11 @@ def main(argv):
     allow_path = None
     if args[:1] == ["--allow"] and len(args) >= 2:
         allow_path, args = args[1], args[2:]
+    if not args:
+        print("usage: leak_check.py [--allow FILE] PATH [PATH ...]", file=sys.stderr)
+        return 2
+    if args[:1] == ["--"]:
+        args = args[1:]
     if not args:
         print("usage: leak_check.py [--allow FILE] PATH [PATH ...]", file=sys.stderr)
         return 2

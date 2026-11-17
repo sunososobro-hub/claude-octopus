@@ -40,12 +40,6 @@ description = "PEM private key header"
 regex = '''-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----'''
 keywords = ["private key"]
 
-[[rules]]
-id = "bypass-marker"
-description = "Scanner-bypass annotation in submitted text"
-regex = '''gitleaks:allow'''
-keywords = ["gitleaks:allow"]
-
 [allowlist]
 description = "Fixtures and the config itself"
 paths = ['''^\.gitleaks\.toml$''', '''^tests/test_leak_check\.py$''']

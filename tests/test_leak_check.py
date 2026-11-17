@@ -20,6 +20,9 @@ class MustReject(unittest.TestCase):
     def test_phone(self):
         self.assertIn("phone", cats("call 0912" + "-345-678"))
         self.assertIn("phone", cats("call +1415" + "5550100"))
+        self.assertIn("phone", cats("call (415) 555-" + "0100"))
+        self.assertIn("phone", cats("call 415-555-" + "0100"))
+        self.assertIn("phone", cats("call +44 20 7946 " + "0958"))
 
     def test_ip_private_and_public(self):
         self.assertIn("ip", cats("host 10.1." + "2.3"))
@@ -33,12 +36,22 @@ class MustReject(unittest.TestCase):
         self.assertIn("local path", cats("/home/" + "alice/x"))
         self.assertIn("local path", cats("/Users/" + "alice/x"))
 
+    def test_encoded_local_path(self):
+        self.assertIn("local path", cats("dir C--Users-" + "alice-projects-x"))
+        self.assertIn("local path", cats("dir -home-" + "alice-projects-x"))
+
+    def test_bare_domain_and_repo_shorthand(self):
+        self.assertIn("domain", cats("visit www.acme-corp" + ".net today"))
+        self.assertIn("domain", cats("host intranet.acme-corp" + ".io"))
+        self.assertIn("repo name", cats("gh repo clone acme-org" + "/secret-repo"))
+        self.assertIn("repo name", cats("git clone acme-org" + "/secret-repo"))
+
     def test_domain_and_share_link(self):
         self.assertIn("domain", cats("see https://intranet.acme-corp.net/wiki"))
         self.assertIn("share link", cats("https://docs.google.com/document/d/abc"))
 
     def test_ids(self):
-        self.assertIn("account id", cats("account 1234567890" + "12"))
+        self.assertIn("account id", cats("ga G-ABCDEF" + "1234"))
         self.assertIn("uuid", cats("id 123e4567-e89b-12d3-" + "a456-426614174000"))
         self.assertIn("session id", cats("session_id: abcdef0123456789" + "abcdef"))
 
@@ -61,6 +74,18 @@ class Placeholders(unittest.TestCase):
             "listen on 127.0.0.1",
             "python scripts/leak_check.py <file>",
             "https://github.com/anthropics/claude-code",
+            "@staticmethod",
+            "    @property",
+            " * @param {string} name the name",
+            "model claude-3-5-sonnet-20241022",
+            "created 1700000000",
+            "nanosec precision",
+            "see pypi.org and npmjs.com",
+            "curl https://api.github.com/users/octocat",
+            "dir C--Users-you-projects",
+            "date 2026-11-16 and 1.2.3 and self.app.run()",
+            "gh repo clone owner/repo",
+            "scripts/leak_check.py tests/test_nap.py",
         ]:
             self.assertEqual(cats(line), [], line)
 
@@ -69,6 +94,10 @@ class Allowlist(unittest.TestCase):
     def test_allow_domain_and_repo(self):
         self.assertEqual(cats("https://wiki.acme-corp.net/a", {"domain": {"wiki.acme-corp.net"}}), [])
         self.assertEqual(cats("https://github.com/acme-org/x", {"repo": {"acme-org"}}), [])
+
+    def test_repopath_allow(self):
+        self.assertEqual(cats("https://github.com/acme-org/x", {"repopath": {"acme-org/x"}}), [])
+        self.assertIn("repo name", cats("https://github.com/acme-org/y", {"repopath": {"acme-org/x"}}))
 
     def test_file_skip_and_scan(self):
         with tempfile.TemporaryDirectory() as d:

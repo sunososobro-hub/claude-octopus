@@ -3,7 +3,8 @@
 ## Reporting a vulnerability or a leaked secret
 
 Please do not open a public issue for a vulnerability or for a real credential.
-Use GitHub private vulnerability reporting (Security tab, "Report a vulnerability") for this repository.
+Instead, send a direct message to the repository owner on GitHub, or open an issue that says only
+"I have a security report" with no details, and the owner will arrange a private channel.
 
 If the report contains a real key, token or password, revoke it and issue a new one first.
 Treat anything that was posted publicly as already leaked.

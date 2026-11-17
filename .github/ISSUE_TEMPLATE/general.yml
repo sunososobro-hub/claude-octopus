@@ -1,6 +1,5 @@
 name: General feedback
 description: Bug report, idea or note. Do not include private information.
-labels: ["triage"]
 body:
   - type: markdown
     attributes:

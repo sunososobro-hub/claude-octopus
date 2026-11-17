@@ -7,7 +7,8 @@ Thanks for helping. Please keep contributions free of private information.
 1. Run the tests: `python -m unittest discover -s tests -v`
 2. Check your text or patch for identifiers that should not be published:
    `python scripts/leak_check.py <file>` (standard library only).
-3. Optional: scan with [gitleaks](https://github.com/gitleaks/gitleaks) using the repo config:
+3. Secret scanning (keys, tokens, passwords) is done by gitleaks; leak_check only looks for
+   identifying information. Scan with [gitleaks](https://github.com/gitleaks/gitleaks) using the repo config:
    `gitleaks detect --config .gitleaks.toml`
 
 Anything the checks flag is rejected as a whole. We do not edit or redact submissions;

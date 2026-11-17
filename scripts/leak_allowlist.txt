@@ -2,7 +2,7 @@
 file:scripts/leak_check.py   # holds the detection patterns themselves
 file:tests/test_leak_check.py   # synthetic fixtures
 file:tests/test_nap.py   # fake session ids used as fixtures
-file:tests/test_delta.py   # fake session ids used as fixtures
 file:scripts/leak_allowlist.txt   # this file
-file:.gitleaks.toml   # holds the bypass-marker detection rule
+file:.gitleaks.toml   # holds webhook host names as detection keywords
+repopath:sunososobro-hub/claude-octopus   # public upstream repo (README clone URL, issues link)
 repo:gitleaks   # upstream scanner project, referenced in docs and CI
