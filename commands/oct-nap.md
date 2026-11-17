@@ -97,4 +97,4 @@ Resume: /oct-wake {hash}
 
 If checkpoints were archived (step 4 or 5), add `Archived N older {project-tag} checkpoint(s)`. Print any `WARN` line from 3d/4 as-is.
 
-Then the savings line (nothing printed if it cannot be computed): `$PY "$SCRIPT" --nap-savings={hash} 2>&1`. Show its output as-is (a second `estimate:` line gives the net saving after the fresh session's cold-start cost, from the user's rolling baseline; it may say it does not pay off or history is too thin: show that too). For a manual run also tell the user once they can `/clear` and the checkpoint auto-resumes.
+Then the savings line (nothing printed if it cannot be computed): `$PY "$SCRIPT" --nap-savings={hash} 2>&1`. Show its output as-is (a second `estimate:` line gives the net saving after the fresh session's cold-start cost, from the user's rolling baseline; it may say it does not pay off or history is too thin: show that too). For a manual run also tell the user once they can `/clear` now and the checkpoint auto-resumes; after more turns, nap again first (the checkpoint does not hold them).

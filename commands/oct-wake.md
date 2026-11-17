@@ -88,7 +88,7 @@ Sort by index date, newest first. When reading a checkpoint file, read `## Task`
     - "Resume?" yes: use the cluster's latest checkpoint for Steps 2-3. Mention once that older ones look superseded (next `/oct-nap` on this project archives them); do not archive yourself.
   - The drill-down applies only to the no-arg call, regardless of `.last_woken`; never default to "most recent". `.last_woken` only drives the SessionStart nudge.
 
-After `/clear`, the SessionStart hook `auto-wake.py` injects this window's latest checkpoint and `.last_woken`: confirm in the Step 4 format and skip Steps 1-3 except 3b (use the injected nap_verify output). If the injected text says it was cut (checkpoint over 9000 chars; priority sections come first), Read the named file for the missing part before confirming (Decisions / Watch in full). If it lists candidates instead (this window has no checkpoint of its own), load nothing until the user picks; `*` marks a project tag matching the working directory.
+After `/clear`, the SessionStart hook `auto-wake.py` injects this window's latest checkpoint and `.last_woken`: confirm in the Step 4 format and skip Steps 1-3 except 3b (use the injected nap_verify output). If the injected text says the checkpoint is STALE, it ends with a `## Since checkpoint` block (turns after the nap: user replies, dispatches, deploys): that block wins over the checkpoint (Step 3b). If the injected text says it was cut (checkpoint over 9000 chars; priority sections come first), Read the named file for the missing part before confirming (Decisions / Watch in full). If it lists candidates instead (this window has no checkpoint of its own), load nothing until the user picks; `*` marks a project tag matching the working directory.
 
 No checkpoint files: say so, suggest `/oct-nap` before clearing; fabricate nothing.
 
@@ -133,7 +133,12 @@ cat $SUM/<hash>.md; echo "<hash>" > $SUM/.last_woken
 
 Skip if only memory files were loaded.
 
-## Step 3b — Quotes and in-flight check
+## Step 3b — Since checkpoint, quotes and in-flight check
+
+A checkpoint is a snapshot from when the nap started; later turns are not in it. Use the `## Since checkpoint` block injected by auto-wake, or for a manual wake run `$PY "$(dirname "$SCRIPT")/nap_delta.py" <hash> --session ${CLAUDE_SESSION_ID}` in the Step 3 Bash call (no output = the checkpoint is current; this is the only transcript read allowed). When there is a block:
+- It is newer than the checkpoint and wins. Tick every Next Steps / Pending dispatch / Awaiting Reply item it answers, dispatches or completes as `[x]`, quoting the user's words. `Answered since` lines are word matches: reopen one only if the quoted words do not answer the item.
+- Never ask again a question the user answered there; never re-dispatch what it shows as `sent`.
+- Add `Since checkpoint: <what changed, one line>` to the Step 4 confirmation.
 
 If the checkpoint ends with `## User quotes index`, compare its quotes and numbered proposals with Next Steps; show each unmatched ask as `⚠️ In the quotes but not in the todo list: ...` (one line each) and add it to Next Steps.
 
@@ -141,7 +146,7 @@ If it has `## Running agents`, `## Pending dispatch` or a `Collect <name>` item:
 - `✅` -> tick its `Collect <name>` item `[x]`; an `(inferred)` check only means the agent stopped: read its result first.
 - `⏳` -> still running; wait for its completion notice, do not re-dispatch.
 - `❌` -> add the printed `- [ ] Chase ...` line to the todo and handle it this turn.
-- `Pending dispatch` -> the user already asked: dispatch in this reply without asking.
+- `Pending dispatch` -> the user already asked: dispatch in this reply without asking, unless the Since checkpoint block shows it was already sent.
 
 ## Step 4 — Confirm
 
@@ -149,6 +154,7 @@ If it has `## Running agents`, `## Pending dispatch` or a `Collect <name>` item:
 ✅ Woke from <hash> (<date time>)
 Task: [one-line summary from ## Task]
 [## Awaiting Reply items, if present, first, as written]
+[Since checkpoint: one line, only if there is a block]
 [📅/⚠️ Due line, only if ## Due exists]
 
 ✅ N items done (type "expand" to view)

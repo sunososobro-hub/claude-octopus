@@ -43,9 +43,9 @@ Shown un-prefixed; add `oct-toolkit:` when installed as a plugin.
 |---|---|---|
 | Nap nudge (`nap-nudge.py`) | when a nap + `/clear` now would save more than `nudge_min_net_usd` (default $0.02) **net of the cold-start cost**, judged from your own history (see below), then at most every 15 turns; until your history is thick enough it falls back to 30 user turns or `nudge_growth_tokens` (default 80000) of growth; asks Claude to nap in the background | one line |
 | Background nap | a forked subagent writes the checkpoint, merges and archives same-project ones, prints the savings line; your turn is not blocked | fork re-reads the cached context (cache reads, no cache miss); roughly +25% over a foreground nap at ~40k context, see below |
-| Clear reminder | ~5 turns after a nap without `/clear`, one line, once per nap | one line |
+| Clear reminder | ~5 turns after a nap without `/clear`: says the checkpoint is stale and to nap again before `/clear`; once per nap | one line |
 | Memory tidy | after a nap, only if `MEMORY.md` has more than 40 lines: a background subagent merges duplicates and archives stale notes, prints `tidying memory in background` | reads memory files only |
-| Auto-wake (`auto-wake.py`) | after `/clear`, injects the latest checkpoint of the project | ~1-2k per `/clear` |
+| Auto-wake (`auto-wake.py`) | after `/clear`, injects the latest checkpoint of the project, plus a redacted `Since checkpoint` tail (user replies, dispatches, deploys after the nap) when turns came after it | ~1-2k per `/clear`, +1k at most when stale |
 | Cost line (Stop hook) | after each response, shown as a systemMessage | 0 model tokens |
 | Startup nudge (`wake-nudge.py`) | new session, reminds of an unresumed checkpoint; warns once when `MEMORY.md` is bloated or unchecked for 30 days | 0 model tokens |
 | First checkup (`oct_core.py`) | automatically on the first run (no `oct-toolkit/checkup.json` yet): a background script reads your transcripts and prints 2-3 lines once; with under 3 days / 3 sessions of history it says so and retries every 6 h | 0 model tokens |

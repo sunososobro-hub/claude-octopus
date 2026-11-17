@@ -20,6 +20,18 @@ INSTRUCTION = (
     "then continue from it. Do not re-read the file.\n\n"
 )
 
+STALE = (
+    "BUT the checkpoint is STALE: {n} user turn(s) came after it was taken. The `## Since checkpoint` block at the end is "
+    "newer than the checkpoint and wins over it. Before replying, mark every Next steps / Pending dispatch / Awaiting Reply "
+    "item that the block answers, dispatches or completes as done ([x], with the user's words); never ask again a question "
+    "the user answered there and never re-dispatch what it shows as already sent. Add one `Since checkpoint:` line to the "
+    "confirmation saying what changed.{cut}"
+)
+STALE_CUT = (
+    " The block was cut to fit ({k} older lines omitted): tell the user the checkpoint was {n} turns stale and some detail "
+    "may be missing; grep {path} for a needed detail, never read it whole."
+)
+
 CUTMARK = chr(10) + "[... section cut ...]" + chr(10)
 
 CUT = (
@@ -188,6 +200,19 @@ def verify(h):
     except Exception:
         return ""
 
+def since(h, payload):
+    """-> (instruction addendum, `## Since checkpoint` block) for turns after the checkpoint; ("", "") if none."""
+    try:
+        import nap_delta
+        got = nap_delta.build(h, payload.get("session_id") or "", payload.get("transcript_path") or "")
+    except Exception:
+        return "", ""
+    if not got:
+        return "", ""
+    cut = STALE_CUT.format(k=got["omitted"], n=got["turns"], path=got["transcript"]) if got["omitted"] else ""
+    return STALE.format(n=got["turns"], cut=cut), "\n\n" + got["text"]
+
+
 def main():
     try:
         payload = json.load(sys.stdin)
@@ -216,7 +241,11 @@ def main():
         (SUMMARIES / ".last_woken").write_text(h + "\n")
     except Exception:
         pass
-    print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": head + text + verify(h)}}))
+    stale, delta = since(h, payload)
+    if stale:
+        head = head.rstrip("\n") + " " + stale + "\n\n"
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart",
+                                             "additionalContext": head + text + verify(h) + delta}}))
 
 if __name__ == "__main__":
     main()
