@@ -25,6 +25,16 @@ SID = "11111111-2222-3333-4444-555555555555"
 SID2 = "66666666-7777-8888-9999-000000000000"
 
 
+def dead_pid():
+    """A PID that is guaranteed not to be running: a child that has already exited and been reaped."""
+    c = subprocess.Popen([sys.executable, "-c", "pass"])
+    c.wait()
+    return str(c.pid)
+
+
+DEAD = dead_pid()
+
+
 def cp(h, task, nexts=(), decisions=(), extra=""):
     body = "# %s | 2026-11-16 10:00\n\n## Task\n%s\n\n## Key Findings\n- f\n" % (h, task)
     if decisions:
@@ -196,8 +206,8 @@ class Scopes(Base):
         for h in ("aaaaaaa1", "aaaaaaa2", "aaaaaaa3", "aaaaaaa4"):
             self.put(h, cp(h, "t"))
         me = str(os.getpid())
-        self.index("aaaaaaa1 | 2026-11-16 10:00 | acme:mobile | m | 999999999 | " + SID,
-                   "aaaaaaa2 | 2026-11-16 10:00 | acme:main | main | 999999999",
+        self.index("aaaaaaa1 | 2026-11-16 10:00 | acme:mobile | m | " + DEAD + " | " + SID,
+                   "aaaaaaa2 | 2026-11-16 10:00 | acme:main | main | " + DEAD,
                    "aaaaaaa3 | 2026-11-16 10:00 | acme:mobile | live other window | " + me,
                    "aaaaaaa4 | 2026-11-16 10:00 | acme | legacy unscoped")
         rows = ni.read_index()[0]
@@ -210,7 +220,7 @@ class Scopes(Base):
         self.put("aaaaaaa1", cp("aaaaaaa1", "t"))
         self.put("aaaaaaa2", cp("aaaaaaa2", "t"))
         self.index("aaaaaaa1 | 2026-11-16 10:00 | p | other live window | %d" % os.getpid(),
-                   "aaaaaaa2 | 2026-11-16 10:00 | p | closed window | 999999999")
+                   "aaaaaaa2 | 2026-11-16 10:00 | p | closed window | " + DEAD)
         r = self.cli("--archive", "aaaaaaa1", "aaaaaaa2", env={"CLAUDE_PID": "123456789"})
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("refused: aaaaaaa1", r.stdout)
