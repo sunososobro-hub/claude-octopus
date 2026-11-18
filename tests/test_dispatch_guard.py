@@ -36,8 +36,7 @@ class DispatchGuardTest(unittest.TestCase):
     def test_marker_text_in_brief_does_not_suppress_rules(self):
         _, out = run({"tool_input": {"prompt": "Find refs to [dispatch-guard rules], then wait for CI"}})
         h = out["hookSpecificOutput"]
-        self.assertTrue(h["updatedInput"]["prompt"].endswith("read at most 4 images; screenshot "
-                                                              "verification belongs to a separate short agent."))
+        self.assertTrue(h["updatedInput"]["prompt"].endswith("stop and hand back what is done and the exact next step."))
         self.assertIn("additionalContext", h)
 
     def test_chinese_wait_ci(self):
@@ -47,6 +46,26 @@ class DispatchGuardTest(unittest.TestCase):
     def test_bad_input_is_silent(self):
         r = subprocess.run([sys.executable, SCRIPT], input="nope", capture_output=True, text=True)
         self.assertEqual((r.returncode, r.stdout), (0, ""))
+
+
+
+class RepoSettingsTest(unittest.TestCase):
+    """The rule must also apply in cloud routine sessions, which use repo-level settings."""
+
+    def test_repo_settings_hook_runs_guard_and_appends_brake(self):
+        root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+        with open(os.path.join(root, ".claude", "settings.json"), encoding="utf-8") as f:
+            cfg = json.load(f)
+        entry = [e for e in cfg["hooks"]["PreToolUse"] if e["matcher"] == "Agent"][0]
+        cmd = entry["hooks"][0]["command"]
+        self.assertIn("dispatch-guard.py", cmd)
+        env = dict(os.environ, CLAUDE_PROJECT_DIR=os.path.abspath(root))
+        r = subprocess.run(cmd, shell=True, env=env, capture_output=True, text=True,
+                           input=json.dumps({"tool_input": {"prompt": "wait for CI green"}}))
+        self.assertEqual(r.returncode, 0)
+        p = json.loads(r.stdout)["hookSpecificOutput"]["updatedInput"]["prompt"]
+        self.assertIn("60k tokens", p)
+        self.assertIn("25 steps", p)
 
 
 if __name__ == "__main__":
