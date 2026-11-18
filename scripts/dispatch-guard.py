@@ -16,7 +16,9 @@ RULES = (
     "hand back at once with the run id and the exact next command; the main window waits in a "
     "background shell and dispatches a short agent to finish (e.g. merge).\n"
     "- Never poll in a loop. Stay within 25 steps and read at most 4 images; screenshot "
-    "verification belongs to a separate short agent."
+    "verification belongs to a separate short agent.\n"
+    "- Brake on size as well as time: if your context passes about 60k tokens or you reach "
+    "25 steps, whichever comes first, stop and hand back what is done and the exact next step."
 )
 
 
