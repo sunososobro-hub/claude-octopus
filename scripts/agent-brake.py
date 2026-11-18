@@ -58,8 +58,8 @@ def measure(path):
 
 
 def build(payload, max_steps=None, max_tokens=None):
-    if not payload.get("agent_id"):
-        return None
+    if not payload.get("agent_id") or payload.get("tool_name") == "SubagentHandback":
+        return None  # main session, or the hand-back itself: never block the report
     path = find_transcript(payload)
     if not path:
         return None

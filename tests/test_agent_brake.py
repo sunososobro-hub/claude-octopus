@@ -38,6 +38,10 @@ class AgentBrakeTest(unittest.TestCase):
         self.assertIn("70k tokens", res["hookSpecificOutput"]["permissionDecisionReason"])
         self.assertEqual(res["hookSpecificOutput"]["permissionDecision"], "deny")
 
+    def test_handback_tool_is_never_denied(self):
+        self.assertIsNone(self.run_case([turn()] * 40, {"tool_name": "SubagentHandback"}))
+        self.assertIsNotNone(self.run_case([turn()] * 40, {"tool_name": "Bash"}))
+
     def test_main_session_is_never_braked(self):
         self.assertIsNone(self.run_case([turn()] * 40, {"agent_id": None}))
 
