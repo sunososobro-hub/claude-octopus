@@ -59,6 +59,15 @@
             "command": "for p in python3 python \"py -3\"; do if $p -c 1 >/dev/null 2>&1; then exec $p \"${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-guard.py\"; fi; done"
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "for p in python3 python \"py -3\"; do if $p -c 1 >/dev/null 2>&1; then exec $p \"${CLAUDE_PLUGIN_ROOT}/scripts/agent-brake.py\"; fi; done"
+          }
+        ]
       }
     ]
   }
