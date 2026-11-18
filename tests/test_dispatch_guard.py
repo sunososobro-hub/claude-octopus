@@ -48,9 +48,6 @@ class DispatchGuardTest(unittest.TestCase):
         self.assertEqual((r.returncode, r.stdout), (0, ""))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class RepoSettingsTest(unittest.TestCase):
     """The rule must also apply in cloud routine sessions, which use repo-level settings."""
@@ -62,9 +59,14 @@ class RepoSettingsTest(unittest.TestCase):
         entry = [e for e in cfg["hooks"]["PreToolUse"] if e["matcher"] == "Agent"][0]
         cmd = entry["hooks"][0]["command"]
         self.assertIn("dispatch-guard.py", cmd)
-        script = os.path.join(root, "scripts", "dispatch-guard.py")
-        self.assertTrue(os.path.isfile(script))
-        _, out = run({"tool_input": {"prompt": "wait for CI green"}})
-        p = out["hookSpecificOutput"]["updatedInput"]["prompt"]
+        env = dict(os.environ, CLAUDE_PROJECT_DIR=os.path.abspath(root))
+        r = subprocess.run(cmd, shell=True, env=env, capture_output=True, text=True,
+                           input=json.dumps({"tool_input": {"prompt": "wait for CI green"}}))
+        self.assertEqual(r.returncode, 0)
+        p = json.loads(r.stdout)["hookSpecificOutput"]["updatedInput"]["prompt"]
         self.assertIn("60k tokens", p)
         self.assertIn("25 steps", p)
+
+
+if __name__ == "__main__":
+    unittest.main()
