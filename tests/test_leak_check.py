@@ -17,6 +17,16 @@ class MustReject(unittest.TestCase):
     def test_email(self):
         self.assertIn("email", cats("mail me at someone@acme-corp.net"))
 
+    def test_email_on_public_domain_is_still_reported(self):
+        self.assertIn("email", cats("mail someone@" + "github.com"))
+        self.assertIn("email", cats("mail someone@" + "anthropic.com"))
+        self.assertNotIn("email", cats("co-author noreply@anthropic.com"))
+        self.assertNotIn("email", cats("author 12345+bot@users.noreply.github.com"))
+
+    def test_phone_before_sentence_period(self):
+        self.assertIn("phone", cats("call 415-555-" + "0100."))
+        self.assertIn("phone", cats("call (415) 555-" + "0100. Thanks"))
+
     def test_phone(self):
         self.assertIn("phone", cats("call 0912" + "-345-678"))
         self.assertIn("phone", cats("call +1415" + "5550100"))
@@ -116,6 +126,16 @@ class Allowlist(unittest.TestCase):
             self.assertEqual(lc.main([ok]), 0)
             self.assertEqual(lc.main([bad]), 1)
             self.assertEqual(lc.main([]), 2)
+
+    def test_text_mode(self):
+        with tempfile.TemporaryDirectory() as d:
+            ok = os.path.join(d, "ok.md")
+            bad = os.path.join(d, "bad.md")
+            open(ok, "w").write("hello user@example.com\n")
+            open(bad, "w").write("ping 10.0.0." + "5\n")
+            self.assertEqual(lc.main(["--text", ok]), 0)
+            self.assertEqual(lc.main(["--text", bad]), 1)
+            self.assertEqual(lc.main(["--text"]), 2)
 
     def test_matched_text_not_printed(self):
         import contextlib

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Pre-submission check for identifiers that should not be published (stdlib only).
 
-Usage: python scripts/leak_check.py [--allow FILE] PATH [PATH ...]
+Usage: python scripts/leak_check.py [--allow FILE] [--text FILE | PATH ...]
+--text FILE scans one text file (an issue or PR body draft) before posting it.
 Exit 0 = clean, 1 = something matched, 2 = usage error.
 
 Any match rejects the whole file: nothing is redacted, and the matched text is never
@@ -44,7 +45,7 @@ RX = {
     # E.164 (+ and 8-15 digits, optional separators), (415) 555-0100, 415-555-0100, 0912-345-678
     "phone": re.compile(
         r"(?<![\w.+-])(?:\+[1-9](?:[\s.-]?\d){7,14}|\(\d{2,4}\)[\s-]?\d{3,4}[\s-]\d{3,4}"
-        r"|\d{2,4}-\d{3,4}-\d{3,4})(?![\w.-])"),
+        r"|\d{2,4}-\d{3,4}-\d{3,4})(?![\w-]|\.\w)"),
     "ip": re.compile(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?![\w.])"),
     "mac": re.compile(r"(?<![0-9A-Fa-f:-])(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f:-])"),
     "local path": re.compile(
@@ -106,6 +107,17 @@ def domain_ok(d, allow):
     return any(d == ok or d.endswith("." + ok) for ok in PLACEHOLDER_DOMAINS | ALWAYS_OK_DOMAINS)
 
 
+def email_ok(addr, domain, allow):
+    """Placeholder, noreply and allowlisted addresses only; a real mailbox on a public domain is a match."""
+    addr, domain = addr.lower(), domain.lower().rstrip(".")
+    local = addr.rsplit("@", 1)[0]
+    if addr in allow.get("email", ()) or domain in allow.get("domain", ()):
+        return True
+    if any(domain == d or domain.endswith("." + d) for d in PLACEHOLDER_DOMAINS):
+        return True
+    return domain.endswith("noreply.github.com") or local == "noreply" or local.startswith("noreply+")
+
+
 def ip_ok(ip, allow):
     parts = ip.split(".")
     if any(int(p) > 255 for p in parts):
@@ -120,7 +132,7 @@ def scan_line(line, allow):
     """Return the sorted category names matched on this line (never the matched text)."""
     hits = set()
     for m in RX["email"].finditer(line):
-        if domain_ok(m.group(1), allow) or m.group(0).lower() in allow.get("email", ()):
+        if email_ok(m.group(0), m.group(1), allow):
             continue
         if m.group(1).split(".")[-1].lower() in FILE_TLDS:
             continue
@@ -214,6 +226,11 @@ def main(argv):
     allow_path = None
     if args[:1] == ["--allow"] and len(args) >= 2:
         allow_path, args = args[1], args[2:]
+    if args[:1] == ["--text"]:
+        if len(args) != 2:
+            print("usage: leak_check.py --text FILE", file=sys.stderr)
+            return 2
+        args = args[1:]
     if not args:
         print("usage: leak_check.py [--allow FILE] PATH [PATH ...]", file=sys.stderr)
         return 2

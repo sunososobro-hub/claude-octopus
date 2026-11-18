@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "for p in python3 python \"py -3\"; do if $p -c 1 >/dev/null 2>&1; then exec $p \"$CLAUDE_PROJECT_DIR/scripts/dispatch-guard.py\"; fi; done"
+          }
+        ]
+      }
+    ]
+  }
+}

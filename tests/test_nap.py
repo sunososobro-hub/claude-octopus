@@ -277,7 +277,7 @@ class AutoWake(Base):
 
     def test_cwd_fallback_never_loads_another_windows_checkpoint(self):
         self.put("aaaaaaa1", cp("aaaaaaa1", "mobile work"))
-        self.index("aaaaaaa1 | 2026-11-16 10:00 | acme | mobile work | 1 | " + SID)
+        self.index("aaaaaaa1 | 2026-11-16 10:00 | acme | mobile work | 999999999 | " + SID)
         got = aw.pick("C:/work/acme", "555", lambda w: False)
         self.assertEqual(got[0], "candidates")
         self.assertEqual(got[1][0][0], "aaaaaaa1")
